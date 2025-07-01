@@ -37,26 +37,29 @@ def fetch_stock_data(ticker: str) -> pd.DataFrame:
 def fetch_insider_data(ticker: str) -> List[Dict]:
     url = f"https://www.openinsider.com/screener?s={ticker}&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=0&tdr=&xp=1&vl=&vh=&ocl=&och=&sic1=&sic2=&sortcol=0&maxresults=10"
     headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, headers=headers)
-    if response.status_code != 200:
+    try:
+        response = requests.get(url, headers=headers, timeout=5)
+        response.raise_for_status()
+        tables = pd.read_html(response.text)
+        if not tables:
+            return []
+        df = tables[0]
+        records = []
+        for _, row in df.iterrows():
+            try:
+                records.append({
+                    "date": row["Trade Date"],
+                    "insider": row["Insider Name"],
+                    "type": row["Transaction Type"],
+                    "shares": int(str(row["Shares Traded"]).replace(',', '')),
+                    "price": float(str(row["Price"]).replace('$', '').replace(',', ''))
+                })
+            except Exception:
+                continue
+        return records
+    except Exception as e:
+        logging.warning(f"Insider data fetch failed for {ticker}: {e}")
         return []
-    tables = pd.read_html(response.text)
-    if not tables:
-        return []
-    df = tables[0]
-    records = []
-    for _, row in df.iterrows():
-        try:
-            records.append({
-                "date": row["Trade Date"],
-                "insider": row["Insider Name"],
-                "type": row["Transaction Type"],
-                "shares": int(str(row["Shares Traded"]).replace(',', '')),
-                "price": float(str(row["Price"]).replace('$', '').replace(',', ''))
-            })
-        except Exception:
-            continue
-    return records
 
 def fetch_option_chain(ticker: str) -> Dict:
     stock = yf.Ticker(ticker)
@@ -87,13 +90,6 @@ def fetch_option_chain(ticker: str) -> Dict:
     except Exception as e:
         logging.warning(f"Failed to fetch option chain for {ticker}: {e}")
         return {}
-            "calls": filtered_calls.to_dict("records"),
-            "puts": filtered_puts.to_dict("records"),
-            "expiration": expirations[0]
-        }
-    except Exception as e:
-        logging.warning(f"Failed to fetch option chain for {ticker}: {e}")
-        return []
 
 # =====================
 # 2. Ticker Universe
@@ -151,6 +147,7 @@ def recommend_option_trade(ticker: str, signal: Dict, insider_data: List[Dict], 
             "expiration": option_chain['expiration'],
             "delta": call.get("delta"),
             "open_interest": call.get("openInterest"),
+            "pop": call.get("pop"),
             "confidence": "Strong Buy"
         }
     elif signal['bullish'] and not insider_data:
@@ -160,6 +157,7 @@ def recommend_option_trade(ticker: str, signal: Dict, insider_data: List[Dict], 
             "expiration": option_chain['expiration'],
             "delta": put.get("delta"),
             "open_interest": put.get("openInterest"),
+            "pop": put.get("pop"),
             "confidence": "Income Trade"
         }
     elif not signal['bullish'] and any(d['type'] == 'Sell' for d in insider_data):
@@ -169,20 +167,14 @@ def recommend_option_trade(ticker: str, signal: Dict, insider_data: List[Dict], 
             "expiration": option_chain['expiration'],
             "delta": put.get("delta"),
             "open_interest": put.get("openInterest"),
+            "pop": put.get("pop"),
             "confidence": "Speculative"
         }
     else:
         return {"type": "Watch", "confidence": "Watchlist"}
 
 # =====================
-# 4. Trade Execution (Paper Only)
-# =====================
-def submit_paper_trade(ticker: str, trade: Dict):
-    # Placeholder - integrate Alpaca later
-    logging.info(f"Trade submitted (paper): {ticker} | {trade}")
-
-# =====================
-# 5. Outputs
+# 4. Outputs
 # =====================
 def generate_report(ticker: str, sector: str, insider: List[Dict], techs: Dict, option: Dict):
     report = {
@@ -195,10 +187,10 @@ def generate_report(ticker: str, sector: str, insider: List[Dict], techs: Dict, 
     filename = f"report_{ticker}_{datetime.date.today()}.json"
     with open(filename, 'w') as f:
         json.dump(report, f, indent=2)
-    print(json.dumps(report, indent=2))
+    print(f"{ticker}: {option['type']} | Strike: {option.get('strike')} | Confidence: {option['confidence']}")
 
 # =====================
-# 6. Orchestration Logic
+# 5. Run Analysis
 # =====================
 def run_daily_analysis():
     tickers = TOP_TIER + MID_TIER + UPCOMING + sum(SECTORS.values(), [])
@@ -208,7 +200,7 @@ def run_daily_analysis():
             continue
         seen.add(ticker)
         try:
-            sector = classify_sector(ticker)
+            sector = next((s for s, lst in SECTORS.items() if ticker in lst), "Uncategorized")
             df = fetch_stock_data(ticker)
             insider = fetch_insider_data(ticker)
             techs = analyze_technical_indicators(df)
@@ -218,6 +210,7 @@ def run_daily_analysis():
             logging.info(f"Analyzed {ticker} successfully.")
         except Exception as e:
             logging.error(f"Error analyzing {ticker}: {e}")
+            print(f"Error analyzing {ticker}: {e}")
 
 if __name__ == "__main__":
     run_daily_analysis()
