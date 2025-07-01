@@ -58,14 +58,8 @@ def fetch_insider_data(ticker: str) -> List[Dict]:
                 continue
         return records
     except Exception as e:
-        logging.warning(f"Insider data fetch failed for {ticker}: {e}. Using fallback mock data.")
-        return [{
-            "date": str(datetime.date.today()),
-            "insider": "Mock Insider",
-            "type": "Buy",
-            "shares": 15000,
-            "price": 75.50
-        }]
+        logging.warning(f"Insider data fetch failed for {ticker}: {e}")
+        return []
 
 def fetch_option_chain(ticker: str) -> Dict:
     stock = yf.Ticker(ticker)
@@ -150,7 +144,19 @@ def recommend_option_trade(ticker: str, signal: Dict, insider_data: List[Dict], 
     call = option_chain['calls'][0] if option_chain['calls'] else {}
     put = option_chain['puts'][0] if option_chain['puts'] else {}
 
-    if signal['bullish'] and any(d['type'] == 'Buy' for d in insider_data):
+    recent_buys = [
+        d for d in insider_data
+        if d.get("type") == "Buy" and d.get("shares", 0) > 10000 and
+        (datetime.date.today() - datetime.datetime.strptime(d["date"], "%Y-%m-%d").date()).days <= 14
+    ]
+
+    recent_sells = [
+        d for d in insider_data
+        if d.get("type") == "Sell" and d.get("shares", 0) > 10000 and
+        (datetime.date.today() - datetime.datetime.strptime(d["date"], "%Y-%m-%d").date()).days <= 14
+    ]
+
+    if signal['bullish'] and recent_buys:
         return {
             "type": "Buy Call",
             "strike": call.get("strike"),
@@ -159,7 +165,7 @@ def recommend_option_trade(ticker: str, signal: Dict, insider_data: List[Dict], 
             "pop": call.get("pop"),
             "confidence": "Strong Buy"
         }
-    elif signal['bullish'] and not insider_data:
+    elif signal['bullish'] and not recent_buys:
         return {
             "type": "Sell Put",
             "strike": put.get("strike"),
@@ -168,7 +174,7 @@ def recommend_option_trade(ticker: str, signal: Dict, insider_data: List[Dict], 
             "pop": put.get("pop"),
             "confidence": "Income Trade"
         }
-    elif not signal['bullish'] and any(d['type'] == 'Sell' for d in insider_data):
+    elif not signal['bullish'] and recent_sells:
         return {
             "type": "Buy Put",
             "strike": put.get("strike"),
@@ -231,4 +237,3 @@ def run_daily_analysis():
 
 if __name__ == "__main__":
     run_daily_analysis()
-
