@@ -94,6 +94,36 @@ def fetch_option_chain(ticker: str) -> Dict:
         calls = options.calls.copy()
         puts = options.puts.copy()
 
+        if 'bid' not in calls or 'ask' not in calls or 'delta' not in calls or 'openInterest' not in calls:
+            return {}
+
+        calls['spread'] = calls['ask'] - calls['bid']
+        puts['spread'] = puts['ask'] - puts['bid']
+
+        calls = calls.dropna(subset=['delta', 'openInterest', 'spread'])
+        puts = puts.dropna(subset=['delta', 'openInterest', 'spread'])
+
+        filtered_calls = calls[(calls["delta"] >= 0.4) & (calls["delta"] <= 0.6) &
+                               (calls["openInterest"] > 500) & (calls['spread'] < 0.5)]
+        filtered_puts = puts[(puts["delta"] >= -0.6) & (puts["delta"] <= -0.4) &
+                             (puts["openInterest"] > 500) & (puts['spread'] < 0.5)]
+
+        filtered_calls['pop'] = 1 - (filtered_calls['impliedVolatility'] * 0.4)
+        filtered_puts['pop'] = 1 - (filtered_puts['impliedVolatility'] * 0.4)
+
+        return {
+            "calls": filtered_calls.to_dict("records"),
+            "puts": filtered_puts.to_dict("records"),
+            "expiration": expirations[0]
+        }
+    except Exception as e:
+        logging.warning(f"Failed to fetch option chain for {ticker}: {e}")
+        return {}}
+    try:
+        options = stock.option_chain(expirations[0])
+        calls = options.calls.copy()
+        puts = options.puts.copy()
+
         calls['spread'] = calls['ask'] - calls['bid']
         puts['spread'] = puts['ask'] - puts['bid']
 
