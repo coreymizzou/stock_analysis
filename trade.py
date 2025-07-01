@@ -66,23 +66,6 @@ def fetch_insider_data(ticker: str) -> List[Dict]:
             "shares": 15000,
             "price": 75.50
         }]
-        df = tables[0]
-        records = []
-        for _, row in df.iterrows():
-            try:
-                records.append({
-                    "date": row["Trade Date"],
-                    "insider": row["Insider Name"],
-                    "type": row["Transaction Type"],
-                    "shares": int(str(row["Shares Traded"]).replace(',', '')),
-                    "price": float(str(row["Price"]).replace('$', '').replace(',', ''))
-                })
-            except Exception:
-                continue
-        return records
-    except Exception as e:
-        logging.warning(f"Insider data fetch failed for {ticker}: {e}")
-        return []
 
 def fetch_option_chain(ticker: str) -> Dict:
     stock = yf.Ticker(ticker)
@@ -94,19 +77,17 @@ def fetch_option_chain(ticker: str) -> Dict:
         calls = options.calls.copy()
         puts = options.puts.copy()
 
-        if 'bid' not in calls or 'ask' not in calls or 'delta' not in calls or 'openInterest' not in calls:
+        if 'bid' not in calls or 'ask' not in calls or 'openInterest' not in calls:
             return {}
 
         calls['spread'] = calls['ask'] - calls['bid']
         puts['spread'] = puts['ask'] - puts['bid']
 
-        calls = calls.dropna(subset=['delta', 'openInterest', 'spread'])
-        puts = puts.dropna(subset=['delta', 'openInterest', 'spread'])
+        calls = calls.dropna(subset=['strike', 'openInterest', 'impliedVolatility', 'spread'])
+        puts = puts.dropna(subset=['strike', 'openInterest', 'impliedVolatility', 'spread'])
 
-        filtered_calls = calls[(calls["delta"] >= 0.4) & (calls["delta"] <= 0.6) &
-                               (calls["openInterest"] > 500) & (calls['spread'] < 0.5)]
-        filtered_puts = puts[(puts["delta"] >= -0.6) & (puts["delta"] <= -0.4) &
-                             (puts["openInterest"] > 500) & (puts['spread'] < 0.5)]
+        filtered_calls = calls[(calls["openInterest"] > 500) & (calls['spread'] < 0.5)]
+        filtered_puts = puts[(puts["openInterest"] > 500) & (puts['spread'] < 0.5)]
 
         filtered_calls['pop'] = 1 - (filtered_calls['impliedVolatility'] * 0.4)
         filtered_puts['pop'] = 1 - (filtered_puts['impliedVolatility'] * 0.4)
@@ -174,7 +155,6 @@ def recommend_option_trade(ticker: str, signal: Dict, insider_data: List[Dict], 
             "type": "Buy Call",
             "strike": call.get("strike"),
             "expiration": option_chain['expiration'],
-            "delta": call.get("delta"),
             "open_interest": call.get("openInterest"),
             "pop": call.get("pop"),
             "confidence": "Strong Buy"
@@ -184,7 +164,6 @@ def recommend_option_trade(ticker: str, signal: Dict, insider_data: List[Dict], 
             "type": "Sell Put",
             "strike": put.get("strike"),
             "expiration": option_chain['expiration'],
-            "delta": put.get("delta"),
             "open_interest": put.get("openInterest"),
             "pop": put.get("pop"),
             "confidence": "Income Trade"
@@ -194,7 +173,6 @@ def recommend_option_trade(ticker: str, signal: Dict, insider_data: List[Dict], 
             "type": "Buy Put",
             "strike": put.get("strike"),
             "expiration": option_chain['expiration'],
-            "delta": put.get("delta"),
             "open_interest": put.get("openInterest"),
             "pop": put.get("pop"),
             "confidence": "Speculative"
@@ -227,7 +205,6 @@ def generate_report(ticker: str, sector: str, insider: List[Dict], techs: Dict, 
     with open(filename, 'w') as f:
         json.dump(clean_for_json(report), f, indent=2)
     print(f"{ticker}: {option['type']} | Strike: {option.get('strike')} | Confidence: {option['confidence']}")
-    print(f"{ticker}: {option['type']} | Strike: {option.get('strike')} | Confidence: {option['confidence']}")
 
 # =====================
 # 5. Run Analysis
@@ -254,3 +231,4 @@ def run_daily_analysis():
 
 if __name__ == "__main__":
     run_daily_analysis()
+
