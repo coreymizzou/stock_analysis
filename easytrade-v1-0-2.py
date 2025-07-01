@@ -9,7 +9,7 @@ import pandas as pd
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 # Constants
-NEWS_API_KEY = 'dd76647ac02b4d73a2b46b9fba96efd5re'
+NEWS_API_KEY = 'dd76647ac02b4d73a2b46b9fba96efd5'
 THRESHOLD_SCORE = 70
 LOOKAHEAD_DAYS = 30
 
@@ -177,10 +177,12 @@ if __name__ == '__main__':
         except Exception as e:
             print(f"Error with {t}: {e}")
 
-    if not recommendations:
+    top_recs = sorted(recommendations, key=lambda x: x['score'], reverse=True)[:3]
+
+    if not top_recs:
         print("\nNo trades met the threshold score.")
     else:
-        for rec in recommendations:
+        for rec in top_recs:
             print("\n---")
             print(f"Ticker: {rec['ticker']}")
             print(f"Score: {rec['score']:.2f}")
