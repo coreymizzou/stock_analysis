@@ -1,4 +1,4 @@
-# Option Strategy Recommender - Elite Trader Version with Enhanced Put/Call Balance
+# Option Strategy Recommender - Tailored for Selective Signals
 
 import yfinance as yf
 from datetime import datetime, timedelta
@@ -10,7 +10,7 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 # Constants
 NEWS_API_KEY = 'your_newsapi_key_here'
-THRESHOLD_SCORE = 60
+THRESHOLD_SCORE = 65
 LOOKAHEAD_DAYS = 30
 
 # Initialize APIs
@@ -114,18 +114,16 @@ def estimate_earnings_potential(strategy, price):
 def recommend_strategy(score, info):
     peg = info.get('pegRatio', 2)
     fcf = info.get('freeCashflow', 0)
-    if score >= 85 and fcf > 0 and peg < 1.5:
+    if score >= 90 and fcf > 0 and peg < 1.5:
         return 'Buy Stock'
-    elif score >= 85 and (fcf < 0 or peg > 2):
-        return 'Cash-Secured Put'
-    elif score > 85:
-        return 'Naked Call'
-    elif score > 75:
+    elif score >= 85:
         return 'Bull Call Spread'
-    elif score > 65:
-        return 'Diagonal Call Spread'
-    elif score > 50:
+    elif score >= 75:
         return 'Cash-Secured Put'
+    elif score >= 65:
+        return 'Diagonal Call Spread'
+    elif score >= 60:
+        return 'Avoid - No Trade'
     else:
         return 'Avoid - No Trade'
 
@@ -176,7 +174,7 @@ if __name__ == '__main__':
         try:
             print(f"Analyzing {t}...")
             result = run_analysis(t)
-            if result['score'] >= THRESHOLD_SCORE:
+            if result['recommendation'] != 'Avoid - No Trade':
                 recommendations.append(result)
         except Exception as e:
             print(f"Error with {t}: {e}")
