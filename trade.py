@@ -1,4 +1,4 @@
-# personal_trader_bot.py
+https://github.com/coreymizzou/stock_analysis.gi# personal_trader_bot.py
 
 """
 Modular Python script to act as a personal investor/trader.
@@ -43,6 +43,29 @@ def fetch_insider_data(ticker: str) -> List[Dict]:
         tables = pd.read_html(response.text)
         if not tables:
             return []
+        df = tables[0]
+        records = []
+        for _, row in df.iterrows():
+            try:
+                records.append({
+                    "date": row["Trade Date"],
+                    "insider": row["Insider Name"],
+                    "type": row["Transaction Type"],
+                    "shares": int(str(row["Shares Traded"]).replace(',', '')),
+                    "price": float(str(row["Price"]).replace('$', '').replace(',', ''))
+                })
+            except Exception:
+                continue
+        return records
+    except Exception as e:
+        logging.warning(f"Insider data fetch failed for {ticker}: {e}. Using fallback mock data.")
+        return [{
+            "date": str(datetime.date.today()),
+            "insider": "Mock Insider",
+            "type": "Buy",
+            "shares": 15000,
+            "price": 75.50
+        }]
         df = tables[0]
         records = []
         for _, row in df.iterrows():
@@ -177,6 +200,16 @@ def recommend_option_trade(ticker: str, signal: Dict, insider_data: List[Dict], 
 # 4. Outputs
 # =====================
 def generate_report(ticker: str, sector: str, insider: List[Dict], techs: Dict, option: Dict):
+    def clean_for_json(obj):
+        if isinstance(obj, dict):
+            return {k: clean_for_json(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [clean_for_json(v) for v in obj]
+        elif isinstance(obj, (str, int, float, type(None))):
+            return obj
+        else:
+            return str(obj)
+
     report = {
         "Ticker": ticker,
         "Sector": sector,
@@ -186,7 +219,8 @@ def generate_report(ticker: str, sector: str, insider: List[Dict], techs: Dict, 
     }
     filename = f"report_{ticker}_{datetime.date.today()}.json"
     with open(filename, 'w') as f:
-        json.dump(report, f, indent=2)
+        json.dump(clean_for_json(report), f, indent=2)
+    print(f"{ticker}: {option['type']} | Strike: {option.get('strike')} | Confidence: {option['confidence']}")
     print(f"{ticker}: {option['type']} | Strike: {option.get('strike')} | Confidence: {option['confidence']}")
 
 # =====================
