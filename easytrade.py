@@ -9,8 +9,8 @@ import pandas as pd
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 # Constants
-NEWS_API_KEY = 'your_newsapi_key_here'
-THRESHOLD_SCORE = 65
+NEWS_API_KEY = 'dd76647ac02b4d73a2b46b9fba96efd5re'
+THRESHOLD_SCORE = 70
 LOOKAHEAD_DAYS = 30
 
 # Initialize APIs
@@ -30,7 +30,7 @@ WEIGHTS = {
     'roic': 5
 }
 
-# Expanded ticker list including large-cap, mid-cap, growth, and emerging stocks
+# Tickers
 TICKER_LIST = [
     'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'UNH', 'AVGO', 'LLY', 'XOM',
     'JNJ', 'V', 'WMT', 'MA', 'CVX', 'ABBV', 'MRK', 'HD', 'KO', 'PEP', 'ORCL', 'CRM', 'COST',
@@ -52,7 +52,7 @@ def get_stock_data(ticker):
 def analyze_trend(hist):
     if len(hist) < 20:
         return 0
-    return int(hist['Close'].iloc[-1] > hist['Close'].mean())
+    return int(hist['Close'].iloc[-1] > hist['Close'].rolling(50).mean().iloc[-1])
 
 def analyze_volume(hist):
     return int(hist['Volume'].iloc[-1] > hist['Volume'].rolling(20).mean().iloc[-1])
@@ -80,7 +80,7 @@ def has_upcoming_earnings(info):
     return 0
 
 def get_insider_score(ticker):
-    return 10  # Placeholder for real insider trading logic
+    return 10
 
 def get_peg_score(info):
     peg = info.get('pegRatio')
@@ -99,9 +99,9 @@ def compute_total_score(features):
 
 def estimate_earnings_potential(strategy, price):
     if strategy == 'Buy Stock':
-        return f"Potential Gain: ~10-15% in 3–6 months (${price * 0.10:.2f}–${price * 0.15:.2f})"
+        return f"Potential Gain: ~10–15% in 3–6 months (${price * 0.10:.2f}–${price * 0.15:.2f})"
     elif strategy == 'Bull Call Spread':
-        return "Max Profit: ~$350 per contract (risk ~$150)"
+        return f"Max Profit: ~${round(min(350, price * 0.25))} per contract (risk ~$150)"
     elif strategy == 'Naked Call':
         return "High reward, high risk – potential 100%+ return on premium"
     elif strategy == 'Diagonal Call Spread':
@@ -116,14 +116,12 @@ def recommend_strategy(score, info):
     fcf = info.get('freeCashflow', 0)
     if score >= 90 and fcf > 0 and peg < 1.5:
         return 'Buy Stock'
-    elif score >= 85:
+    elif score >= 85 and peg < 2:
         return 'Bull Call Spread'
-    elif score >= 75:
+    elif score >= 78:
         return 'Cash-Secured Put'
-    elif score >= 65:
+    elif score >= 70:
         return 'Diagonal Call Spread'
-    elif score >= 60:
-        return 'Avoid - No Trade'
     else:
         return 'Avoid - No Trade'
 
