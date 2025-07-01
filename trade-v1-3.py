@@ -1,4 +1,4 @@
-# Option Strategy Recommender - Elite Trader Version with Expanded Ticker Universe (Includes Stock Buy Recommendations)
+# Option Strategy Recommender - Elite Trader Version with Enhanced Put/Call Balance
 
 import yfinance as yf
 from datetime import datetime, timedelta
@@ -32,21 +32,14 @@ WEIGHTS = {
 
 # Expanded ticker list including large-cap, mid-cap, growth, and emerging stocks
 TICKER_LIST = [
-    # Mega & Large Cap
     'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'UNH', 'AVGO', 'LLY', 'XOM',
     'JNJ', 'V', 'WMT', 'MA', 'CVX', 'ABBV', 'MRK', 'HD', 'KO', 'PEP', 'ORCL', 'CRM', 'COST',
-    # Mid & Growth
     'SMCI', 'PLTR', 'AMD', 'INTC', 'NFLX', 'UBER', 'PATH', 'UPST', 'NET', 'DDOG', 'ZS',
     'SNOW', 'RBLX', 'TWLO', 'ROKU', 'DOCN', 'AI', 'ENVX', 'FSLR', 'RUN', 'SPWR',
-    # EV & Green Energy
     'TSLA', 'LCID', 'RIVN', 'NIO', 'CHPT', 'BLNK', 'EVGO', 'WBX', 'FREY', 'LTHM',
-    # Speculative & Tech
     'ASTS', 'SOUN', 'BBAI', 'RKLB', 'DNA', 'IONQ', 'GTLB', 'MNMD', 'CRSP', 'EDIT',
-    # Biotech & Healthcare
     'VIR', 'ICPT', 'RNA', 'VRTX', 'REGN', 'BIIB', 'ARWR', 'EXEL', 'SGEN', 'ILMN',
-    # Oil, Defense, and Other
     'XLE', 'RIG', 'HAL', 'SD', 'SM', 'LMT', 'NOC', 'BA', 'GD', 'RTX',
-    # ETF & Political-based
     'NANC', 'QQQ', 'SPY', 'ARKK', 'IWM', 'VTI', 'VOO', 'XLK', 'XLF', 'XLY'
 ]
 
@@ -119,8 +112,12 @@ def estimate_earnings_potential(strategy, price):
         return "N/A"
 
 def recommend_strategy(score, info):
-    if score >= 85 and info.get('freeCashflow', 0) > 0 and info.get('pegRatio', 2) < 1.5:
+    peg = info.get('pegRatio', 2)
+    fcf = info.get('freeCashflow', 0)
+    if score >= 85 and fcf > 0 and peg < 1.5:
         return 'Buy Stock'
+    elif score >= 85 and (fcf < 0 or peg > 2):
+        return 'Cash-Secured Put'
     elif score > 85:
         return 'Naked Call'
     elif score > 75:
