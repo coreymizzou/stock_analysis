@@ -1,4 +1,4 @@
-https://github.com/coreymizzou/stock_analysis.gi# personal_trader_bot.py
+# personal_trader_bot.py
 
 """
 Modular Python script to act as a personal investor/trader.
