@@ -1,239 +1,196 @@
-# personal_trader_bot.py
+# Option Strategy Recommender - Elite Trader Version with Expanded Ticker Universe (Includes Stock Buy Recommendations)
 
-"""
-Modular Python script to act as a personal investor/trader.
-Goals:
-- Maximize income from stocks and options trading
-- Use real-time data and insider activity to drive decisions
-"""
-
-# =====================
-# Imports and Constants
-# =====================
 import yfinance as yf
-import pandas as pd
+from datetime import datetime, timedelta
+from newsapi import NewsApiClient
 import requests
-import datetime
-import json
-import logging
-from typing import List, Dict, Tuple
+from bs4 import BeautifulSoup
+import pandas as pd
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-# Logging configuration
-logging.basicConfig(filename='trade_log.log', level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
+# Constants
+NEWS_API_KEY = 'your_newsapi_key_here'
+THRESHOLD_SCORE = 60
+LOOKAHEAD_DAYS = 30
 
-# Alpaca keys (optional for live/paper trading)
-ALPACA_API_KEY = 'your_alpaca_api_key'
-ALPACA_SECRET_KEY = 'your_alpaca_secret_key'
-BASE_URL = 'https://paper-api.alpaca.markets'
+# Initialize APIs
+newsapi = NewsApiClient(api_key=NEWS_API_KEY)
+sentiment_analyzer = SentimentIntensityAnalyzer()
 
-# =====================
-# 1. Data Collection
-# =====================
-def fetch_stock_data(ticker: str) -> pd.DataFrame:
-    stock = yf.Ticker(ticker)
-    hist = stock.history(period="3mo")
-    return hist
-
-def fetch_insider_data(ticker: str) -> List[Dict]:
-    url = f"https://www.openinsider.com/screener?s={ticker}&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=0&tdr=&xp=1&vl=&vh=&ocl=&och=&sic1=&sic2=&sortcol=0&maxresults=10"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        response = requests.get(url, headers=headers, timeout=5)
-        response.raise_for_status()
-        tables = pd.read_html(response.text)
-        if not tables:
-            return []
-        df = tables[0]
-        records = []
-        for _, row in df.iterrows():
-            try:
-                records.append({
-                    "date": row["Trade Date"],
-                    "insider": row["Insider Name"],
-                    "type": row["Transaction Type"],
-                    "shares": int(str(row["Shares Traded"]).replace(',', '')),
-                    "price": float(str(row["Price"]).replace('$', '').replace(',', ''))
-                })
-            except Exception:
-                continue
-        return records
-    except Exception as e:
-        logging.warning(f"Insider data fetch failed for {ticker}: {e}")
-        return []
-
-def fetch_option_chain(ticker: str) -> Dict:
-    stock = yf.Ticker(ticker)
-    expirations = stock.options
-    if not expirations:
-        return {}
-    try:
-        options = stock.option_chain(expirations[0])
-        calls = options.calls.copy()
-        puts = options.puts.copy()
-
-        if 'bid' not in calls or 'ask' not in calls or 'openInterest' not in calls:
-            return {}
-
-        calls['spread'] = calls['ask'] - calls['bid']
-        puts['spread'] = puts['ask'] - puts['bid']
-
-        calls = calls.dropna(subset=['strike', 'openInterest', 'impliedVolatility', 'spread'])
-        puts = puts.dropna(subset=['strike', 'openInterest', 'impliedVolatility', 'spread'])
-
-        filtered_calls = calls[(calls["openInterest"] > 500) & (calls['spread'] < 0.5)]
-        filtered_puts = puts[(puts["openInterest"] > 500) & (puts['spread'] < 0.5)]
-
-        filtered_calls['pop'] = 1 - (filtered_calls['impliedVolatility'] * 0.4)
-        filtered_puts['pop'] = 1 - (filtered_puts['impliedVolatility'] * 0.4)
-
-        return {
-            "calls": filtered_calls.to_dict("records"),
-            "puts": filtered_puts.to_dict("records"),
-            "expiration": expirations[0]
-        }
-    except Exception as e:
-        logging.warning(f"Failed to fetch option chain for {ticker}: {e}")
-        return {}
-
-# =====================
-# 2. Ticker Universe
-# =====================
-TOP_TIER = [
-    "SPY", "QQQ", "DIA",
-    "AAPL", "AMZN", "MSFT", "NVDA", "GOOGL", "META", "TSLA",
-    "BRK.B", "V", "UNH", "JPM", "MA", "AVGO", "NFLX"
-]
-
-MID_TIER = [
-    "PLTR", "SOFI", "DKNG", "FUBO", "RBLX", "RUN", "BLNK",
-    "CHPT", "OPEN", "LCID", "UPST", "AFRM", "COIN", "HOOD", "TTD"
-]
-
-UPCOMING = [
-    "IONQ", "ASTS", "GCT", "VLCN", "HLLY", "AMRS", "NNDM", "INM", "BMEA",
-    "HIMS", "BIRD", "ENVX", "SOUN", "PRST", "BEEM", "CANO", "PRZO"
-]
-
-SECTORS = {
-    "EV": ["TSLA", "NIO", "RIVN", "LCID", "XPEV", "F", "GM", "LI", "NKLA"],
-    "Energy": ["XOM", "CVX", "SLB", "ENPH", "FSLR", "NEE", "OXY", "COP", "VLO"],
-    "Tech/AI": ["NVDA", "AMD", "PLTR", "AI", "SMCI", "CRWD", "ZS", "DDOG", "SNOW", "MDB"],
-    "Defense": ["LMT", "RTX", "NOC", "BA", "PLTR", "CRWD", "PANW"],
-    "Biotech": ["MRNA", "VRTX", "BIIB", "NVAX", "REGN", "BNTX", "SRPT"],
-    "Politics": ["NANC"]
+# Weights
+WEIGHTS = {
+    'trend': 15,
+    'volume': 10,
+    'news_sentiment': 15,
+    'earnings': 10,
+    'sector_strength': 15,
+    'insider': 15,
+    'peg': 10,
+    'fcf': 5,
+    'roic': 5
 }
 
-# =====================
-# 3. Strategy Engine
-# =====================
-def analyze_technical_indicators(df: pd.DataFrame) -> Dict:
-    df["SMA_20"] = df["Close"].rolling(window=20).mean()
-    df["SMA_50"] = df["Close"].rolling(window=50).mean()
-    latest = df.iloc[-1]
-    return {
-        "price": latest["Close"],
-        "sma20": latest["SMA_20"],
-        "sma50": latest["SMA_50"],
-        "bullish": latest["SMA_20"] > latest["SMA_50"]
-    }
+# Expanded ticker list including large-cap, mid-cap, growth, and emerging stocks
+TICKER_LIST = [
+    # Mega & Large Cap
+    'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'UNH', 'AVGO', 'LLY', 'XOM',
+    'JNJ', 'V', 'WMT', 'MA', 'CVX', 'ABBV', 'MRK', 'HD', 'KO', 'PEP', 'ORCL', 'CRM', 'COST',
+    # Mid & Growth
+    'SMCI', 'PLTR', 'AMD', 'INTC', 'NFLX', 'UBER', 'PATH', 'UPST', 'NET', 'DDOG', 'ZS',
+    'SNOW', 'RBLX', 'TWLO', 'ROKU', 'DOCN', 'AI', 'ENVX', 'FSLR', 'RUN', 'SPWR',
+    # EV & Green Energy
+    'TSLA', 'LCID', 'RIVN', 'NIO', 'CHPT', 'BLNK', 'EVGO', 'WBX', 'FREY', 'LTHM',
+    # Speculative & Tech
+    'ASTS', 'SOUN', 'BBAI', 'RKLB', 'DNA', 'IONQ', 'GTLB', 'MNMD', 'CRSP', 'EDIT',
+    # Biotech & Healthcare
+    'VIR', 'ICPT', 'RNA', 'VRTX', 'REGN', 'BIIB', 'ARWR', 'EXEL', 'SGEN', 'ILMN',
+    # Oil, Defense, and Other
+    'XLE', 'RIG', 'HAL', 'SD', 'SM', 'LMT', 'NOC', 'BA', 'GD', 'RTX',
+    # ETF & Political-based
+    'NANC', 'QQQ', 'SPY', 'ARKK', 'IWM', 'VTI', 'VOO', 'XLK', 'XLF', 'XLY'
+]
 
-def recommend_option_trade(ticker: str, signal: Dict, insider_data: List[Dict], option_chain: Dict) -> Dict:
-    if not option_chain:
-        return {"type": "Watch", "confidence": "No Liquidity"}
+def get_stock_data(ticker):
+    stock = yf.Ticker(ticker)
+    hist = stock.history(period="6mo")
+    info = stock.info
+    return hist, info
 
-    call = option_chain['calls'][0] if option_chain['calls'] else {}
-    put = option_chain['puts'][0] if option_chain['puts'] else {}
+def analyze_trend(hist):
+    if len(hist) < 20:
+        return 0
+    return int(hist['Close'].iloc[-1] > hist['Close'].mean())
 
-    recent_buys = [
-        d for d in insider_data
-        if d.get("type") == "Buy" and d.get("shares", 0) > 10000 and
-        (datetime.date.today() - datetime.datetime.strptime(d["date"], "%Y-%m-%d").date()).days <= 14
-    ]
+def analyze_volume(hist):
+    return int(hist['Volume'].iloc[-1] > hist['Volume'].rolling(20).mean().iloc[-1])
 
-    recent_sells = [
-        d for d in insider_data
-        if d.get("type") == "Sell" and d.get("shares", 0) > 10000 and
-        (datetime.date.today() - datetime.datetime.strptime(d["date"], "%Y-%m-%d").date()).days <= 14
-    ]
+def analyze_news_sentiment(ticker):
+    try:
+        articles = newsapi.get_everything(q=ticker, language='en', sort_by='relevancy', page_size=10)
+        score = 0
+        for a in articles['articles']:
+            score += sentiment_analyzer.polarity_scores(a['title'])['compound']
+        return max(min(score * 10, 100), -100)
+    except:
+        return 0
 
-    if signal['bullish'] and recent_buys:
-        return {
-            "type": "Buy Call",
-            "strike": call.get("strike"),
-            "expiration": option_chain['expiration'],
-            "open_interest": call.get("openInterest"),
-            "pop": call.get("pop"),
-            "confidence": "Strong Buy"
-        }
-    elif signal['bullish'] and not recent_buys:
-        return {
-            "type": "Sell Put",
-            "strike": put.get("strike"),
-            "expiration": option_chain['expiration'],
-            "open_interest": put.get("openInterest"),
-            "pop": put.get("pop"),
-            "confidence": "Income Trade"
-        }
-    elif not signal['bullish'] and recent_sells:
-        return {
-            "type": "Buy Put",
-            "strike": put.get("strike"),
-            "expiration": option_chain['expiration'],
-            "open_interest": put.get("openInterest"),
-            "pop": put.get("pop"),
-            "confidence": "Speculative"
-        }
-    else:
-        return {"type": "Watch", "confidence": "Watchlist"}
-
-# =====================
-# 4. Outputs
-# =====================
-def generate_report(ticker: str, sector: str, insider: List[Dict], techs: Dict, option: Dict):
-    def clean_for_json(obj):
-        if isinstance(obj, dict):
-            return {k: clean_for_json(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [clean_for_json(v) for v in obj]
-        elif isinstance(obj, (str, int, float, type(None))):
-            return obj
-        else:
-            return str(obj)
-
-    report = {
-        "Ticker": ticker,
-        "Sector": sector,
-        "Insider Activity": insider,
-        "Technical Signals": techs,
-        "Option Trade Recommendation": option
-    }
-    filename = f"report_{ticker}_{datetime.date.today()}.json"
-    with open(filename, 'w') as f:
-        json.dump(clean_for_json(report), f, indent=2)
-    print(f"{ticker}: {option['type']} | Strike: {option.get('strike')} | Confidence: {option['confidence']}")
-
-# =====================
-# 5. Run Analysis
-# =====================
-def run_daily_analysis():
-    tickers = TOP_TIER + MID_TIER + UPCOMING + sum(SECTORS.values(), [])
-    seen = set()
-    for ticker in tickers:
-        if ticker in seen:
-            continue
-        seen.add(ticker)
+def has_upcoming_earnings(info):
+    earnings_date = info.get('earningsDate')
+    if isinstance(earnings_date, list):
+        earnings_date = earnings_date[0]
+    if earnings_date:
         try:
-            sector = next((s for s, lst in SECTORS.items() if ticker in lst), "Uncategorized")
-            df = fetch_stock_data(ticker)
-            insider = fetch_insider_data(ticker)
-            techs = analyze_technical_indicators(df)
-            option_chain = fetch_option_chain(ticker)
-            option = recommend_option_trade(ticker, techs, insider, option_chain)
-            generate_report(ticker, sector, insider, techs, option)
-            logging.info(f"Analyzed {ticker} successfully.")
-        except Exception as e:
-            logging.error(f"Error analyzing {ticker}: {e}")
-            print(f"Error analyzing {ticker}: {e}")
+            days_until = (earnings_date - datetime.today()).days
+            return int(days_until < LOOKAHEAD_DAYS)
+        except:
+            return 0
+    return 0
 
-if __name__ == "__main__":
-    run_daily_analysis()
+def get_insider_score(ticker):
+    return 10  # Placeholder for real insider trading logic
+
+def get_peg_score(info):
+    peg = info.get('pegRatio')
+    return 10 if peg and peg < 1.5 else 0
+
+def get_fcf_score(info):
+    fcf = info.get('freeCashflow')
+    return 5 if fcf and fcf > 0 else 0
+
+def get_roic_score(info):
+    roic = info.get('returnOnEquity')
+    return 5 if roic and roic > 0.15 else 0
+
+def compute_total_score(features):
+    return sum(features[k] * WEIGHTS[k] / 10 for k in WEIGHTS)
+
+def estimate_earnings_potential(strategy, price):
+    if strategy == 'Buy Stock':
+        return f"Potential Gain: ~10-15% in 3–6 months (${price * 0.10:.2f}–${price * 0.15:.2f})"
+    elif strategy == 'Bull Call Spread':
+        return "Max Profit: ~$350 per contract (risk ~$150)"
+    elif strategy == 'Naked Call':
+        return "High reward, high risk – potential 100%+ return on premium"
+    elif strategy == 'Diagonal Call Spread':
+        return "Return: ~25–40% if short leg expires worthless"
+    elif strategy == 'Cash-Secured Put':
+        return "Yield: ~1.5–2% in 30 days (~18–24% annualized)"
+    else:
+        return "N/A"
+
+def recommend_strategy(score, info):
+    if score >= 85 and info.get('freeCashflow', 0) > 0 and info.get('pegRatio', 2) < 1.5:
+        return 'Buy Stock'
+    elif score > 85:
+        return 'Naked Call'
+    elif score > 75:
+        return 'Bull Call Spread'
+    elif score > 65:
+        return 'Diagonal Call Spread'
+    elif score > 50:
+        return 'Cash-Secured Put'
+    else:
+        return 'Avoid - No Trade'
+
+def suggest_trade_details(ticker, hist, rec_type):
+    current_price = hist['Close'].iloc[-1]
+    expiration = datetime.now() + timedelta(days=30)
+    base = round(current_price / 5) * 5
+    if rec_type == 'Buy Stock':
+        return f"Buy {ticker} shares at ${current_price:.2f}", estimate_earnings_potential(rec_type, current_price)
+    elif rec_type == 'Bull Call Spread':
+        return f"Buy {base} Call / Sell {base + 5} Call expiring {expiration.date()} at limit ~1.5", estimate_earnings_potential(rec_type, current_price)
+    elif rec_type == 'Naked Call':
+        return f"Buy {base} Call expiring {expiration.date()} at limit ~2.0", estimate_earnings_potential(rec_type, current_price)
+    elif rec_type == 'Diagonal Call Spread':
+        return f"Buy {base} Call (45d) / Sell {base + 5} Call (15d)", estimate_earnings_potential(rec_type, current_price)
+    elif rec_type == 'Cash-Secured Put':
+        return f"Sell {base - 5} Put expiring {expiration.date()} at credit ~1.2 (hold $100/share cash)", estimate_earnings_potential(rec_type, current_price)
+    else:
+        return "No trade recommended", "N/A"
+
+def run_analysis(ticker):
+    hist, info = get_stock_data(ticker)
+    features = {
+        'trend': analyze_trend(hist),
+        'volume': analyze_volume(hist),
+        'news_sentiment': analyze_news_sentiment(ticker),
+        'earnings': has_upcoming_earnings(info),
+        'sector_strength': 60,
+        'insider': get_insider_score(ticker),
+        'peg': get_peg_score(info),
+        'fcf': get_fcf_score(info),
+        'roic': get_roic_score(info)
+    }
+    score = compute_total_score(features)
+    rec = recommend_strategy(score, info)
+    trade, potential = suggest_trade_details(ticker, hist, rec)
+    return {
+        'ticker': ticker,
+        'score': score,
+        'recommendation': rec,
+        'trade': trade,
+        'potential': potential
+    }
+
+if __name__ == '__main__':
+    recommendations = []
+    for t in TICKER_LIST:
+        try:
+            print(f"Analyzing {t}...")
+            result = run_analysis(t)
+            if result['score'] >= THRESHOLD_SCORE:
+                recommendations.append(result)
+        except Exception as e:
+            print(f"Error with {t}: {e}")
+
+    if not recommendations:
+        print("\nNo trades met the threshold score.")
+    else:
+        for rec in recommendations:
+            print("\n---")
+            print(f"Ticker: {rec['ticker']}")
+            print(f"Score: {rec['score']:.2f}")
+            print(f"Strategy: {rec['recommendation']}")
+            print(f"Suggested Trade: {rec['trade']}")
+            print(f"Expected Outcome: {rec['potential']}")
