@@ -102,7 +102,9 @@ def fetch_news_sentiment(ticker):
         sentiment_score = 0
         count = 0
         for article in articles['articles']:
-            text = (article.get('title', '') + ' ' + article.get('description', '')).lower()
+            title = article.get('title') or ''
+            desc = article.get('description') or ''
+            text = (title + ' ' + desc).lower()
             sentiment = analyzer.polarity_scores(text)
             sentiment_score += sentiment['compound']
             count += 1
