@@ -147,7 +147,7 @@ def fetch_insider_trading(ticker):
     try:
         url = f"http://openinsider.com/screener?s={ticker}&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=0&tdr=&xp=1&vl=&vh=&ocl=&och=&sic1=&sic2=&sortcol=0"
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
         }
         res = requests.get(url, headers=headers)
         if res.status_code != 200:
@@ -158,20 +158,44 @@ def fetch_insider_trading(ticker):
         soup = BeautifulSoup(res.text, 'html.parser')
         table = soup.find('table', class_='tinytable')
         if not table:
+            print(f"No insider table found for {ticker}")
             return 0
 
-        rows = table.find_all('tr')[1:11]
+        rows = table.find_all('tr')
+        if not rows or len(rows) < 2:
+            print(f"No rows found in insider table for {ticker}")
+            return 0
+
+        # Find the header to locate the "Trans Type" column
+        headers_row = rows[0]
+        headers = [th.get_text(strip=True).lower() for th in headers_row.find_all(['td', 'th'])]
+        if "trans" in headers:
+            action_index = headers.index("trans")
+        elif "transaction type" in headers:
+            action_index = headers.index("transaction type")
+        else:
+            action_index = 6  # Fallback
+
         score = 0
-        for row in rows:
+        count = 0
+
+        for row in rows[1:]:
             cells = row.find_all('td')
-            if len(cells) < 8:
+            if len(cells) <= action_index:
                 continue
-            action = cells[6].text.strip().lower()
-            if action == 'buy':
+            action = cells[action_index].text.strip().lower()
+            if 'buy' in action:
                 score += 0.2
-            elif action == 'sell':
+                count += 1
+            elif 'sell' in action:
                 score -= 0.2
+                count += 1
+            if count >= 10:
+                break
+
+        print(f"{ticker} insider score: {score}")
         return score
+
     except Exception as e:
         print(f"Error fetching insider data for {ticker}: {e}")
         return 0
