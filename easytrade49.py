@@ -316,7 +316,11 @@ def generate_trade_recommendations():
 
 def main():
     print("Generating Options Trade Recommendations...")
-    raw_scores = [calculate_composite_score(ticker) for ticker in stock_list if calculate_composite_score(ticker)]
+    raw_scores = []
+    for ticker in stock_list:
+        result = calculate_composite_score(ticker)
+        if result:
+            raw_scores.append(result)er)]
     normalized = normalize_scores(raw_scores)
     top_trades = sector_limiter(normalized[:10], max_per_sector=1)
 
