@@ -90,7 +90,7 @@ def fetch_insider_trading(ticker):
         score = 0
         for trade in recent_trades:
             action = trade.get("Transaction", "").lower()
-            amount = trade.get("Amount", 0)
+            amount = float(trade.get("Amount", 0) or 0)
             rep_name = trade.get("Representative", "").lower()
 
             if "purchase" in action or "buy" in action:
