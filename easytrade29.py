@@ -7,13 +7,16 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import warnings
+from quiverquant import QuiverQuant
 warnings.filterwarnings('ignore')
 
 # API Keys
 FINNHUB_API_KEY = 'YOUR_FINNHUB_API_KEY'
+QUIVER_API_KEY = '9ed914d4d32da4d26b02d4d9540f46606002736b'
 
 # Initialize API clients
 finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
+qq = QuiverQuant(api_key=QUIVER_API_KEY)
 analyzer = SentimentIntensityAnalyzer()
 
 stocks = {
@@ -51,42 +54,24 @@ def fetch_news_sentiment(ticker):
 def fetch_social_sentiment(ticker):
     return 0  # Temporarily disabled
 
-def calculate_composite_score(ticker):
-    stock_data = fetch_stock_data(ticker)
-    if not stock_data:
-        return None
-
-    news_score = fetch_news_sentiment(ticker)
-    social_score = 0
-    insider_score = fetch_insider_trading(ticker)
-
-    sector = next((k for k, v in stocks.items() if ticker in v), 'Other')
-    political_score = 0
-    if sector == 'EV':
-        political_score += 0.2
-    elif sector == 'Energy':
-        political_score += 0.2
-    elif sector == 'Political':
-        political_score += 0.3
-
-    composite_score = (
-        stock_data['tech_score'] * 0.3 +
-        news_score * 0.2 +
-        social_score * 0.1 +
-        insider_score * 0.2 +
-        political_score * 0.2
-    )
-
-    return {
-        'ticker': ticker,
-        'score': composite_score,
-        'tech_score': stock_data['tech_score'],
-        'news_score': news_score,
-        'social_score': social_score,
-        'insider_score': insider_score,
-        'political_score': political_score,
-        'price': stock_data['price']
-    }
+def fetch_insider_trading(ticker):
+    try:
+        df = qq.get_insider_trading(ticker)
+        if df.empty:
+            return 0
+        recent_trades = df.sort_values('Date', ascending=False).head(10)
+        score = 0
+        for _, row in recent_trades.iterrows():
+            action = row.get('Transaction', '').lower()
+            if 'buy' in action:
+                score += 0.2
+            elif 'sell' in action:
+                score -= 0.2
+        print(f"{ticker} insider score: {score}")
+        return score
+    except Exception as e:
+        print(f"Error fetching insider data for {ticker}: {e}")
+        return 0
 
 def fetch_stock_data(ticker):
     try:
@@ -94,7 +79,6 @@ def fetch_stock_data(ticker):
         hist = stock.history(period='1mo', interval='1d')
         if hist.empty:
             return None
-
         rsi = calculate_rsi(hist['Close'])
         macd, signal = calculate_macd(hist['Close'])
         sma_20 = hist['Close'].rolling(window=20).mean().iloc[-1]
@@ -143,187 +127,41 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
     signal_line = macd.ewm(span=signal, adjust=False).mean()
     return macd, signal_line
 
-def fetch_insider_trading(ticker):
-    try:
-        formatted_ticker = ticker.replace('.', '-')
-        url = f"http://openinsider.com/screener?s={formatted_ticker}&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=0&tdr=&xp=1&vl=&vh=&ocl=&och=&sic1=&sic2=&sortcol=0"
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-        }
-        res = requests.get(url, headers=headers)
-        if res.status_code != 200:
-            print(f"Error fetching insider data for {ticker}: Status {res.status_code}")
-            return 0
+def calculate_composite_score(ticker):
+    stock_data = fetch_stock_data(ticker)
+    if not stock_data:
+        return None
+    news_score = fetch_news_sentiment(ticker)
+    insider_score = fetch_insider_trading(ticker)
+    social_score = fetch_social_sentiment(ticker)
 
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(res.text, 'html.parser')
-        table = soup.find('table', class_='tinytable')
-        if not table:
-            print(f"No insider table found for {ticker}")
-            return 0
+    sector = next((k for k, v in stocks.items() if ticker in v), 'Other')
+    political_score = 0
+    if sector == 'EV':
+        political_score += 0.2
+    elif sector == 'Energy':
+        political_score += 0.2
+    elif sector == 'Political':
+        political_score += 0.3
 
-        rows = table.find_all('tr')[1:]  # skip header
-        score = 0
-        count = 0
-        for row in rows:
-            cells = row.find_all('td')
-            if len(cells) < 7:
-                continue
-            action = cells[6].get_text(strip=True).lower()
-            if 'buy' in action:
-                score += 0.2
-                count += 1
-            elif 'sell' in action:
-                score -= 0.2
-                count += 1
-            if count >= 10:
-                break
+    composite_score = (
+        stock_data['tech_score'] * 0.4 +
+        news_score * 0.2 +
+        insider_score * 0.2 +
+        political_score * 0.1 +
+        social_score * 0.1
+    )
 
-        print(f"{ticker} insider score: {score}")
-        return score
-
-    except Exception as e:
-        print(f"Exception fetching insider data for {ticker}: {e}")
-        return 0
-        soup = BeautifulSoup(res.text, 'html.parser')
-        table = soup.find('table', class_='tinytable')
-        if not table:
-            print(f"No insider table found for {ticker}")
-            return 0
-
-        rows = table.find_all('tr')
-        if len(rows) < 2:
-            print(f"No data rows found for {ticker}")
-            return 0
-
-        score = 0
-        count = 0
-        for row in rows[1:]:
-            cells = row.find_all('td')
-            if len(cells) < 7:
-                continue
-            action = cells[6].get_text(strip=True).lower()
-            if 'buy' in action:
-                score += 0.2
-                count += 1
-            elif 'sell' in action:
-                score -= 0.2
-                count += 1
-            if count >= 10:
-                break
-
-        print(f"{ticker} insider score: {score}")
-        return score
-
-    except Exception as e:
-        print(f"Error fetching insider data for {ticker}: {e}")
-        return 0
-
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(res.text, 'html.parser')
-        table = soup.find('table', class_='tinytable')
-        if not table:
-            print(f"No insider table found for {ticker}")
-            return 0
-
-        rows = table.find_all('tr')
-        if len(rows) < 2:
-            print(f"No data rows found for {ticker}")
-            return 0
-
-        headers_row = rows[0]
-        headers = [th.get_text(strip=True).lower() for th in headers_row.find_all(['td', 'th'])]
-        action_index = next((i for i, h in enumerate(headers) if 'trans' in h), 6)
-
-        score = 0
-        count = 0
-        for row in rows[1:]:
-            cells = row.find_all('td')
-            if len(cells) <= action_index:
-                continue
-            action = cells[action_index].get_text(strip=True).lower()
-            if 'buy' in action:
-                score += 0.2
-                count += 1
-            elif 'sell' in action:
-                score -= 0.2
-                count += 1
-            if count >= 10:
-                break
-
-        print(f"{ticker} insider score: {score}")
-        return score
-
-    except Exception as e:
-        print(f"Error fetching insider data for {ticker}: {e}")
-        return 0
-        soup = BeautifulSoup(res.text, 'html.parser')
-        table = soup.find('table', class_='tinytable')
-        if not table:
-            print(f"No insider table found for {ticker}")
-            return 0
-
-        rows = table.find_all('tr')
-        if len(rows) < 2:
-            print(f"No data rows found for {ticker}")
-            return 0
-
-        headers_row = rows[0]
-        headers = [th.get_text(strip=True).lower() for th in headers_row.find_all(['td', 'th'])]
-        action_index = None
-        for i, header in enumerate(headers):
-            if 'trans' in header:
-                action_index = i
-                break
-
-        if action_index is None:
-            print(f"Transaction type column not found for {ticker}")
-            return 0
-
-        score = 0
-        count = 0
-        for row in rows[1:]:
-            cells = row.find_all('td')
-            if len(cells) <= action_index:
-                continue
-            action = cells[action_index].get_text(strip=True).lower()
-            if 'buy' in action:
-                score += 0.2
-                count += 1
-            elif 'sell' in action:
-                score -= 0.2
-                count += 1
-            if count >= 10:
-                break
-
-        print(f"{ticker} insider score: {score}")
-        return score
-
-    except Exception as e:
-        print(f"Error fetching insider data for {ticker}: {e}")
-        return 0
-
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(res.text, 'html.parser')
-        table = soup.find('table', class_='tinytable')
-        if not table:
-            return 0
-
-        rows = table.find_all('tr')[1:11]
-        score = 0
-        for row in rows:
-            cells = row.find_all('td')
-            if len(cells) < 8:
-                continue
-            action = cells[6].text.strip().lower()
-            if action == 'buy':
-                score += 0.2
-            elif action == 'sell':
-                score -= 0.2
-        return score
-    except Exception as e:
-        print(f"Error fetching insider data for {ticker}: {e}")
-        return 0
+    return {
+        'ticker': ticker,
+        'score': composite_score,
+        'tech_score': stock_data['tech_score'],
+        'news_score': news_score,
+        'insider_score': insider_score,
+        'political_score': political_score,
+        'social_score': social_score,
+        'price': stock_data['price']
+    }
 
 def fetch_options_data(ticker):
     try:
@@ -331,26 +169,20 @@ def fetch_options_data(ticker):
         expirations = stock.options
         if not expirations:
             return None
-
         target_date = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
         expiration = min(expirations, key=lambda x: abs((datetime.strptime(x, '%Y-%m-%d') - datetime.strptime(target_date, '%Y-%m-%d')).days))
         chain = stock.option_chain(expiration)
-
         calls = chain.calls
         puts = chain.puts
-
         current_price = stock.history(period='1d')['Close'].iloc[-1]
-
         calls['moneyness'] = calls['strike'] - current_price
         calls = calls[calls['moneyness'] >= 0].sort_values('moneyness')
         if calls.shape[0] < 2:
             return None
-
         call_buy = calls.iloc[0]
         call_sell = calls.iloc[1]
         puts['moneyness'] = abs(puts['strike'] - current_price)
         atm_put = puts.loc[puts['moneyness'].idxmin()]
-
         return {
             'expiration': expiration,
             'call_buy': call_buy,
@@ -368,46 +200,38 @@ def generate_trade_recommendations():
         score_data = calculate_composite_score(ticker)
         if score_data:
             scores.append(score_data)
-
-    print("\nAll Composite Scores:")
-    for s in sorted(scores, key=lambda x: x['score'], reverse=True):
-        print(f"{s['ticker']}: score={round(s['score'], 2)} | tech={round(s['tech_score'], 2)} | news={round(s['news_score'], 2)} | insider={round(s['insider_score'], 2)} | political={round(s['political_score'], 2)}")
-
     scores = sorted(scores, key=lambda x: x['score'], reverse=True)[:5]
-
     trades = []
     for score in scores:
         ticker = score['ticker']
         options_data = fetch_options_data(ticker)
         if not options_data:
             continue
-
         composite = score['score']
-        if composite >= 0.5:
+        if composite >= 0.6:
             option_type = 'Bull Call Spread'
             buy = options_data['call_buy']
             sell = options_data['call_sell']
             spread_cost = buy['ask'] - sell['bid']
             limit_price = round(spread_cost * 1.05, 2)
             strike = f"{buy['strike']} / {sell['strike']}"
-        elif composite >= 0.3:
+        elif composite >= 0.4:
             option_type = 'Bullish Call'
             buy = options_data['call_buy']
             limit_price = round(buy['ask'] * 1.05, 2)
             strike = buy['strike']
-        elif composite >= 0.1:
+        elif composite >= 0.2:
             option_type = 'Bullish Put (Sell CSP)'
             sell = options_data['put']
             limit_price = round(sell['bid'] * 0.95, 2)
             strike = sell['strike']
-        elif composite <= -0.3:
+        elif composite <= -0.4:
             option_type = 'Bearish Put (Buy Put)'
             buy = options_data['put']
             limit_price = round(buy['ask'] * 1.05, 2)
             strike = buy['strike']
         else:
             continue
-
         trades.append({
             'ticker': ticker,
             'option_type': option_type,
@@ -417,13 +241,11 @@ def generate_trade_recommendations():
             'confidence': round(min(score['score'] * 100, 95), 2),
             'explanation': f"Composite score: {round(score['score'], 2)}"
         })
-
     return trades
 
 def main():
     print("Generating Options Trade Recommendations...")
     trades = generate_trade_recommendations()
-
     print("\nTop Trade Recommendations:")
     for i, trade in enumerate(trades, 1):
         print(f"\nTrade {i}:")
@@ -437,3 +259,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
