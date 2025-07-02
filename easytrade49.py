@@ -320,7 +320,7 @@ def main():
     for ticker in stock_list:
         result = calculate_composite_score(ticker)
         if result:
-            raw_scores.append(result)er)]
+            raw_scores.append(result)
     normalized = normalize_scores(raw_scores)
     top_trades = sector_limiter(normalized[:10], max_per_sector=1)
 
