@@ -30,6 +30,29 @@ stock_list = [stock for sector in stocks.values() for stock in sector]
 SORT_BY_ABS_SCORE = True
 BEAR_THRESHOLD = -0.6
 
+def sector_limiter(trades, max_per_sector=2):
+    sector_counts = {}
+    filtered = []
+    for trade in trades:
+        sector = next((s for s, tickers in stocks.items() if trade['ticker'] in tickers), 'Other')
+        if sector_counts.get(sector, 0) < max_per_sector:
+            sector_counts[sector] = sector_counts.get(sector, 0) + 1
+            filtered.append(trade)
+    return filtered
+
+def normalize_scores(scores):
+    df = pd.DataFrame(scores)
+    for key in ['tech_score', 'news_score', 'insider_score', 'social_score']:
+        df[key] = (df[key] - df[key].mean()) / df[key].std()
+    df['normalized_score'] = (
+        df['tech_score'] * 0.35 +
+        df['news_score'] * 0.2 +
+        df['insider_score'] * 0.15 +
+        df['social_score'] * 0.2 +
+        df['political_score'] * 0.1
+    )
+    return df.sort_values('normalized_score', ascending=False).to_dict(orient='records')
+
 def calculate_rsi(prices, period=14):
     deltas = np.diff(prices)
     gains = np.where(deltas > 0, deltas, 0)
@@ -287,7 +310,46 @@ def generate_trade_recommendations():
 
 def main():
     print("Generating Options Trade Recommendations...")
-    trades = generate_trade_recommendations()
+    raw_scores = [calculate_composite_score(ticker) for ticker in stock_list if calculate_composite_score(ticker)]
+    normalized = normalize_scores(raw_scores)
+    top_trades = sector_limiter(normalized[:10], max_per_sector=1)
+
+    trades = []
+    for score in top_trades:
+        options_data = fetch_options_data(score['ticker'])
+        if not options_data:
+            continue
+
+        composite = score['normalized_score']
+        if composite >= 0.6:
+            option_type = 'Bull Call Spread'
+            buy = options_data['call_buy']
+            sell = options_data['call_sell']
+            spread_cost = buy['ask'] - sell['bid']
+            limit_price = round(spread_cost * 1.05, 2)
+            strike = f"{buy['strike']} / {sell['strike']}"
+        elif composite >= 0.4:
+            option_type = 'Bullish Call'
+            buy = options_data['call_buy']
+            limit_price = round(buy['ask'] * 1.05, 2)
+            strike = buy['strike']
+        elif composite >= 0.2:
+            option_type = 'Bullish Put (Sell CSP)'
+            sell = options_data['put']
+            limit_price = round(sell['bid'] * 0.95, 2)
+            strike = sell['strike']
+        else:
+            continue
+
+        trades.append({
+            'ticker': score['ticker'],
+            'option_type': option_type,
+            'expiration': options_data['expiration'],
+            'strike': strike,
+            'limit_price': limit_price,
+            'confidence': round(min(score['normalized_score'] * 100, 95), 2),
+            'explanation': f"{score['ticker']} shows strong signals. RSI and MACD align, news and social sentiment are {'positive' if score['news_score'] > 0 else 'mixed'}. {'Recent insider buying detected.' if score['insider_score'] > 0 else 'No insider trades of note.'}"
+        })
 
     pd.DataFrame(trades).to_csv("trade_recommendations.csv", index=False)
     print("Saved recommendations to trade_recommendations.csv")
@@ -303,27 +365,26 @@ def main():
         print(f"Confidence Level: {trade['confidence']}%")
         print(f"Explanation: {trade['explanation']}")
 
-    all_scores = [calculate_composite_score(ticker) for ticker in stock_list if calculate_composite_score(ticker)]
-    if all_scores:
-        lowest = min(all_scores, key=lambda x: x['score'])
-        options_data = fetch_options_data(lowest['ticker'])
+    if normalized:
+        worst = min(normalized, key=lambda x: x['normalized_score'])
+        options_data = fetch_options_data(worst['ticker'])
         if options_data:
             option_type = 'Bearish Put (Buy Put)'
             buy = options_data['put']
             limit_price = round(buy['ask'] * 1.05, 2)
             strike = buy['strike']
-            confidence = round(min(abs(lowest['score']) * 100, 95), 2)
-            explanation = f"{lowest['ticker']} has the weakest signals with a composite score of {round(lowest['score'], 2)}. Technicals are {'oversold' if lowest['tech_score'] > 0.2 else 'neutral' if lowest['tech_score'] > 0 else 'overbought'}, news sentiment is {'positive' if lowest['news_score'] > 0 else 'negative'}, and social media mentions are {'favorable' if lowest['social_score'] > 0 else 'unfavorable'}. {'Notable political interest' if lowest['political_score'] > 0 else 'Low political exposure'}. {'Recent insider sales detected.' if lowest['insider_score'] < 0 else 'No significant insider trades.'}"
+            confidence = round(min(abs(worst['normalized_score']) * 100, 95), 2)
+            explanation = f"{worst['ticker']} scored poorly. Technicals are weak, sentiment is {'positive' if worst['news_score'] > 0 else 'negative'}, social mentions are {'high' if worst['social_score'] > 0 else 'low'}, and insider selling or inactivity noted."
 
             print("\nLowest Scoring Ticker:")
             print(f"\nTrade (Lowest Score):")
-            print(f"Ticker: {lowest['ticker']}")
+            print(f"Ticker: {worst['ticker']}")
             print(f"Option Type: {option_type}")
             print(f"Expiration Date: {options_data['expiration']}")
             print(f"Strike: {strike}")
             print(f"Limit Price: ${limit_price}")
             print(f"Confidence Level: {confidence}%")
             print(f"Explanation: {explanation}")
-
+            
 if __name__ == "__main__":
     main()
