@@ -152,9 +152,13 @@ def fetch_insider_trading(ticker):
             "Host": "www.sec.gov"
         }
         res = requests.get(cik_lookup_url, headers=headers)
+        if res.status_code != 200:
+            print(f"CIK lookup failed for {ticker} with status code {res.status_code}")
+            return 0
+
         data = res.json()
         cik = None
-        for item in data:
+        for item in data.values():
             if item['ticker'].upper() == ticker.upper():
                 cik = str(item['cik_str']).zfill(10)
                 break
@@ -163,26 +167,21 @@ def fetch_insider_trading(ticker):
             return 0
 
         form4_url = f"https://data.sec.gov/submissions/CIK{cik}.json"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; CoreyHughesBot/1.0; +http://yourdomain.com)",
-            "Accept-Encoding": "gzip, deflate",
-            "Host": "www.sec.gov"
-        }
         r = requests.get(form4_url, headers=headers)
-        r.raise_for_status()
-        filings = r.json().get('filings', {}).get('recent', {})
+        if r.status_code != 200:
+            print(f"Failed to fetch Form 4 data for {ticker}: {r.status_code}")
+            return 0
 
+        filings = r.json().get('filings', {}).get('recent', {})
         score = 0
         count = 0
-        for form, code, shares in zip(filings.get('form', []),
-                                      filings.get('transactionCode', []),
-                                      filings.get('transactionShares', [])):
+        for form, code in zip(filings.get('form', []), filings.get('transactionCode', [])):
             if form != '4':
                 continue
-            if code == 'P':  # Purchase
+            if code == 'P':
                 score += 0.2
                 count += 1
-            elif code == 'S':  # Sale
+            elif code == 'S':
                 score -= 0.2
                 count += 1
             if count >= 10:
@@ -191,12 +190,6 @@ def fetch_insider_trading(ticker):
     except Exception as e:
         print(f"Error fetching SEC insider data for {ticker}: {e}")
         return 0
-        for trade in insiders['data'][:10]:
-            if trade.get('transactionType', '').lower() == 'buy':
-                insider_score += 0.2
-            elif trade.get('transactionType', '').lower() == 'sell':
-                insider_score -= 0.2
-        return insider_score
     except Exception as e:
         print(f"Error fetching insider data for {ticker}: {e}")
         return 0
