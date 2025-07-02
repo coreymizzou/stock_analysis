@@ -166,6 +166,41 @@ def fetch_insider_trading(ticker):
             print(f"No data rows found for {ticker}")
             return 0
 
+        score = 0
+        count = 0
+        for row in rows[1:]:
+            cells = row.find_all('td')
+            if len(cells) < 7:
+                continue
+            action = cells[6].get_text(strip=True).lower()
+            if 'buy' in action:
+                score += 0.2
+                count += 1
+            elif 'sell' in action:
+                score -= 0.2
+                count += 1
+            if count >= 10:
+                break
+
+        print(f"{ticker} insider score: {score}")
+        return score
+
+    except Exception as e:
+        print(f"Error fetching insider data for {ticker}: {e}")
+        return 0
+
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(res.text, 'html.parser')
+        table = soup.find('table', class_='tinytable')
+        if not table:
+            print(f"No insider table found for {ticker}")
+            return 0
+
+        rows = table.find_all('tr')
+        if len(rows) < 2:
+            print(f"No data rows found for {ticker}")
+            return 0
+
         headers_row = rows[0]
         headers = [th.get_text(strip=True).lower() for th in headers_row.find_all(['td', 'th'])]
         action_index = next((i for i, h in enumerate(headers) if 'trans' in h), 6)
