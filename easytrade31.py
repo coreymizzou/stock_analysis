@@ -7,7 +7,6 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import warnings
-from quiverquant import QuiverQuant
 warnings.filterwarnings('ignore')
 
 # API Keys
@@ -16,7 +15,6 @@ QUIVER_API_KEY = '9ed914d4d32da4d26b02d4d9540f46606002736b'
 
 # Initialize API clients
 finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
-qq = QuiverQuant(api_key=QUIVER_API_KEY)
 analyzer = SentimentIntensityAnalyzer()
 
 stocks = {
@@ -57,8 +55,9 @@ def fetch_social_sentiment(ticker):
 def fetch_insider_trading(ticker):
     try:
         headers = {"Authorization": f"Bearer {QUIVER_API_KEY}"}
-        url = f"https://api.quiverquant.com/beta/historical/congresstrading/{ticker.upper()}"
-        response = requests.get(url, headers=headers)
+        url = f"https://api.quiverquant.com/beta/historical/insidertrading/{ticker.upper()}"
+        response = requests.get(url, headers=headers, timeout=10)
+
         if response.status_code != 200:
             print(f"{ticker} insider API error: {response.status_code}")
             return 0
@@ -71,9 +70,9 @@ def fetch_insider_trading(ticker):
         score = 0
         for trade in recent:
             action = trade.get("Transaction", "").lower()
-            if "purchase" in action or "buy" in action:
+            if "buy" in action:
                 score += 0.2
-            elif "sale" in action or "sell" in action:
+            elif "sell" in action:
                 score -= 0.2
         print(f"{ticker} insider score: {score}")
         return score
