@@ -278,8 +278,7 @@ def main():
     print("Generating Options Trade Recommendations...")
     trades = generate_trade_recommendations()
 
-    print("
-Top Trade Recommendations:")
+    print("Top Trade Recommendations:")
     for i, trade in enumerate(trades, 1):
         print(f"
 Trade {i}:")
