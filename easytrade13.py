@@ -145,9 +145,15 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
 
 def fetch_insider_trading(ticker):
     try:
-        cik_lookup_url = f"https://www.sec.gov/files/company_tickers.json"
-        res = requests.get(cik_lookup_url)
+        # Step 1: Get CIK
+        cik_lookup_url = "https://www.sec.gov/files/company_tickers.json"
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; CoreyBot/1.0)"}
+        res = requests.get(cik_lookup_url, headers=headers, timeout=10)
+        if res.status_code != 200:
+            print(f"Failed to fetch CIK data for {ticker}")
+            return 0
         data = res.json()
+
         cik = None
         for item in data.values():
             if item['ticker'].upper() == ticker.upper():
@@ -157,23 +163,23 @@ def fetch_insider_trading(ticker):
             print(f"CIK not found for {ticker}")
             return 0
 
+        # Step 2: Get Form 4 filings
         form4_url = f"https://data.sec.gov/submissions/CIK{cik}.json"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(form4_url, headers=headers)
-        r.raise_for_status()
-        filings = r.json().get('filings', {}).get('recent', {})
+        r = requests.get(form4_url, headers=headers, timeout=10)
+        if r.status_code != 200:
+            print(f"Failed to fetch filings for {ticker}")
+            return 0
 
+        filings = r.json().get('filings', {}).get('recent', {})
         score = 0
         count = 0
-        for form, code, shares in zip(filings.get('form', []),
-                                      filings.get('transactionCode', []),
-                                      filings.get('transactionShares', [])):
+        for form, code in zip(filings.get('form', []), filings.get('transactionCode', [])):
             if form != '4':
                 continue
-            if code == 'P':  # Purchase
+            if code == 'P':
                 score += 0.2
                 count += 1
-            elif code == 'S':  # Sale
+            elif code == 'S':
                 score -= 0.2
                 count += 1
             if count >= 10:
@@ -181,15 +187,6 @@ def fetch_insider_trading(ticker):
         return score
     except Exception as e:
         print(f"Error fetching SEC insider data for {ticker}: {e}")
-        return 0
-        for trade in insiders['data'][:10]:
-            if trade.get('transactionType', '').lower() == 'buy':
-                insider_score += 0.2
-            elif trade.get('transactionType', '').lower() == 'sell':
-                insider_score -= 0.2
-        return insider_score
-    except Exception as e:
-        print(f"Error fetching insider data for {ticker}: {e}")
         return 0
 
 def fetch_options_data(ticker):
