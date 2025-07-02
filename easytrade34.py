@@ -55,22 +55,42 @@ def fetch_social_sentiment(ticker):
 def fetch_insider_trading(ticker):
     try:
         headers = {"Authorization": f"Bearer {QUIVER_API_KEY}"}
-        url = f"https://api.quiverquant.com/beta/historical/insidertrading/{ticker.upper()}"
+        url = "https://api.quiverquant.com/beta/live/congresstrading"
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code != 200:
-            print(f"{ticker} insider API error: {response.status_code}")
+            print(f"Quiver API error: {response.status_code}")
             return 0
+
         data = response.json()
-        if not isinstance(data, list) or len(data) == 0:
-            return 0
-        recent = data[:10]
+        recent_trades = [t for t in data if t.get("Ticker", "").upper() == ticker.upper()]
+        recent_trades = recent_trades[:10]
+
         score = 0
-        for trade in recent:
+        for trade in recent_trades:
+            action = trade.get("Transaction", "").lower()
+            if "purchase" in action or "buy" in action:
+                score += 0.2
+            elif "sale" in action or "sell" in action:
+                score -= 0.2
+
+        print(f"{ticker} insider score: {score}")
+        return score
+    except Exception as e:
+        print(f"Error fetching insider data for {ticker}: {e}")
+        return 0
+
+        data = response.json()
+        recent_trades = [t for t in data if t.get("Ticker", "").upper() == ticker.upper()]
+        recent_trades = recent_trades[:10]
+
+        score = 0
+        for trade in recent_trades:
             action = trade.get("Transaction", "").lower()
             if "buy" in action:
                 score += 0.2
             elif "sell" in action:
                 score -= 0.2
+
         print(f"{ticker} insider score: {score}")
         return score
     except Exception as e:
