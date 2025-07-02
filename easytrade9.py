@@ -12,12 +12,10 @@ import feedparser
 warnings.filterwarnings('ignore')
 
 # API Keys (replace with your own)
-FINNHUB_API_KEY = 'YOUR_FINNHUB_API_KEY'
-NEWSAPI_KEY = 'YOUR_NEWSAPI_KEY'
+FINNHUB_API_KEY = 'd1ijut1r01qhbuvqfv60d1ijut1r01qhbuvqfv6g'
 
 # Initialize API clients
 finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
-newsapi = NewsApiClient(api_key=NEWSAPI_KEY)
 analyzer = SentimentIntensityAnalyzer()
 
 # Define stock universe
