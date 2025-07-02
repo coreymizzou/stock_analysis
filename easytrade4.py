@@ -12,7 +12,7 @@ warnings.filterwarnings('ignore')
 
 # API Keys (replace with your own)
 FINNHUB_API_KEY = 'd1ijut1r01qhbuvqfv60d1ijut1r01qhbuvqfv6g'
-NEWSAPI_KEY = 'dd76647ac02b4d73a2b46b9fba96efd5'
+NEWSAPI_KEY = '1ee7087627ae4595bbd84147e391b175'
 
 # Initialize API clients
 finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
