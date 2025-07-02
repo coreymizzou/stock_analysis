@@ -154,7 +154,7 @@ def fetch_insider_trading(ticker):
         res = requests.get(cik_lookup_url, headers=headers)
         data = res.json()
         cik = None
-        for item in data.values():
+        for item in data:
             if item['ticker'].upper() == ticker.upper():
                 cik = str(item['cik_str']).zfill(10)
                 break
