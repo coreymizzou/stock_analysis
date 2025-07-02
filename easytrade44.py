@@ -303,5 +303,17 @@ def main():
         print(f"Confidence Level: {trade['confidence']}%")
         print(f"Explanation: {trade['explanation']}")
 
+    # Display the lowest scored ticker
+    all_scores = [calculate_composite_score(ticker) for ticker in stock_list if calculate_composite_score(ticker)]
+    if all_scores:
+        lowest = min(all_scores, key=lambda x: x['score'])
+        print("\nLowest Scoring Ticker:")
+        print(f"Ticker: {lowest['ticker']}")
+        print(f"Score: {round(lowest['score'], 4)}")
+        print(f"News Score: {round(lowest['news_score'], 2)}")
+        print(f"Insider Score: {round(lowest['insider_score'], 2)}")
+        print(f"Social Score: {round(lowest['social_score'], 2)}")
+        print(f"Technical Score: {round(lowest['tech_score'], 2)}")")
+
 if __name__ == "__main__":
     main()
