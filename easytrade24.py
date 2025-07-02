@@ -162,28 +162,29 @@ def fetch_insider_trading(ticker):
             return 0
 
         rows = table.find_all('tr')
-        if not rows or len(rows) < 2:
-            print(f"No rows found in insider table for {ticker}")
+        if len(rows) < 2:
+            print(f"No data rows found for {ticker}")
             return 0
 
-        # Find the header to locate the "Trans Type" column
         headers_row = rows[0]
         headers = [th.get_text(strip=True).lower() for th in headers_row.find_all(['td', 'th'])]
-        if "trans" in headers:
-            action_index = headers.index("trans")
-        elif "transaction type" in headers:
-            action_index = headers.index("transaction type")
-        else:
-            action_index = 6  # Fallback
+        action_index = None
+        for i, header in enumerate(headers):
+            if 'trans' in header:
+                action_index = i
+                break
+
+        if action_index is None:
+            print(f"Transaction type column not found for {ticker}")
+            return 0
 
         score = 0
         count = 0
-
         for row in rows[1:]:
             cells = row.find_all('td')
             if len(cells) <= action_index:
                 continue
-            action = cells[action_index].text.strip().lower()
+            action = cells[action_index].get_text(strip=True).lower()
             if 'buy' in action:
                 score += 0.2
                 count += 1
@@ -196,6 +197,28 @@ def fetch_insider_trading(ticker):
         print(f"{ticker} insider score: {score}")
         return score
 
+    except Exception as e:
+        print(f"Error fetching insider data for {ticker}: {e}")
+        return 0
+
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(res.text, 'html.parser')
+        table = soup.find('table', class_='tinytable')
+        if not table:
+            return 0
+
+        rows = table.find_all('tr')[1:11]
+        score = 0
+        for row in rows:
+            cells = row.find_all('td')
+            if len(cells) < 8:
+                continue
+            action = cells[6].text.strip().lower()
+            if action == 'buy':
+                score += 0.2
+            elif action == 'sell':
+                score -= 0.2
+        return score
     except Exception as e:
         print(f"Error fetching insider data for {ticker}: {e}")
         return 0
