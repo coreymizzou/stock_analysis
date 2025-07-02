@@ -121,7 +121,7 @@ def fetch_insider_trading(ticker):
             if "pelosi" in rep_name:
                 score += 0.3
 
-        print(f"{ticker} insider score: {score}")
+        # print(f"{ticker} insider score: {score}")  # Removed to avoid double logging
         return score
     except Exception as e:
         print(f"Error fetching insider data for {ticker}: {e}")
