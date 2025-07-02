@@ -303,17 +303,27 @@ def main():
         print(f"Confidence Level: {trade['confidence']}%")
         print(f"Explanation: {trade['explanation']}")
 
-    # Display the lowest scored ticker
     all_scores = [calculate_composite_score(ticker) for ticker in stock_list if calculate_composite_score(ticker)]
     if all_scores:
         lowest = min(all_scores, key=lambda x: x['score'])
-        print("\nLowest Scoring Ticker:")
-        print(f"Ticker: {lowest['ticker']}")
-        print(f"Score: {round(lowest['score'], 4)}")
-        print(f"News Score: {round(lowest['news_score'], 2)}")
-        print(f"Insider Score: {round(lowest['insider_score'], 2)}")
-        print(f"Social Score: {round(lowest['social_score'], 2)}")
-        print(f"Technical Score: {round(lowest['tech_score'], 2)}")
+        options_data = fetch_options_data(lowest['ticker'])
+        if options_data:
+            option_type = 'Bearish Put (Buy Put)'
+            buy = options_data['put']
+            limit_price = round(buy['ask'] * 1.05, 2)
+            strike = buy['strike']
+            confidence = round(min(abs(lowest['score']) * 100, 95), 2)
+            explanation = f"{lowest['ticker']} has the weakest signals with a composite score of {round(lowest['score'], 2)}. Technicals are {'oversold' if lowest['tech_score'] > 0.2 else 'neutral' if lowest['tech_score'] > 0 else 'overbought'}, news sentiment is {'positive' if lowest['news_score'] > 0 else 'negative'}, and social media mentions are {'favorable' if lowest['social_score'] > 0 else 'unfavorable'}. {'Notable political interest' if lowest['political_score'] > 0 else 'Low political exposure'}. {'Recent insider sales detected.' if lowest['insider_score'] < 0 else 'No significant insider trades.'}"
+
+            print("\nLowest Scoring Ticker:")
+            print(f"\nTrade (Lowest Score):")
+            print(f"Ticker: {lowest['ticker']}")
+            print(f"Option Type: {option_type}")
+            print(f"Expiration Date: {options_data['expiration']}")
+            print(f"Strike: {strike}")
+            print(f"Limit Price: ${limit_price}")
+            print(f"Confidence Level: {confidence}%")
+            print(f"Explanation: {explanation}")
 
 if __name__ == "__main__":
     main()
