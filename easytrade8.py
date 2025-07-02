@@ -12,7 +12,7 @@ warnings.filterwarnings('ignore')
 
 # API Keys (replace with your own)
 FINNHUB_API_KEY = 'd1ijut1r01qhbuvqfv60d1ijut1r01qhbuvqfv6g'
-NEWSAPI_KEY = '752ce0d986ec40d09652896b2315613a'
+NEWSAPI_KEY = 'c8f40e1b1354493cbd7c813df674e5cf'
 
 # Initialize API clients
 finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
@@ -196,11 +196,11 @@ def calculate_composite_score(ticker):
     sector = next((k for k, v in stocks.items() if ticker in v), 'Other')
     political_score = 0
     if sector == 'EV':
-        political_score += 0.2 if 'subsidy' in fetch_news_sentiment(ticker.lower()) else 0
+        political_score += 0.2
     elif sector == 'Energy':
-        political_score += 0.2 if 'regulation' in fetch_news_sentiment(ticker.lower()) else 0
+        political_score += 0.2
     elif sector == 'Political':
-        political_score += 0.3 if 'defense' in fetch_news_sentiment(ticker.lower()) else 0
+        political_score += 0.3
     
     # Composite score (weighted)
     composite_score = (
