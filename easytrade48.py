@@ -43,7 +43,11 @@ def sector_limiter(trades, max_per_sector=2):
 def normalize_scores(scores):
     df = pd.DataFrame(scores)
     for key in ['tech_score', 'news_score', 'insider_score', 'social_score']:
-        df[key] = (df[key] - df[key].mean()) / df[key].std()
+        if df[key].std() == 0:
+            df[key] = 0  # All values are same; no contribution to score
+        else:
+            df[key] = (df[key] - df[key].mean()) / df[key].std()
+    
     df['normalized_score'] = (
         df['tech_score'] * 0.35 +
         df['news_score'] * 0.2 +
@@ -51,6 +55,8 @@ def normalize_scores(scores):
         df['social_score'] * 0.2 +
         df['political_score'] * 0.1
     )
+
+    df = df.replace([np.inf, -np.inf], 0).dropna()
     return df.sort_values('normalized_score', ascending=False).to_dict(orient='records')
 
 def calculate_rsi(prices, period=14):
