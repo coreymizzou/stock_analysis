@@ -145,7 +145,7 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
 
 def fetch_insider_trading(ticker):
     try:
-        cik_lookup_url = "https://www.sec.gov/files/company_tickers.json"
+        cik_lookup_url = "https://www.sec.gov/files/company_tickers_exchange.json"
         headers = {
             "User-Agent": "Mozilla/5.0 (compatible; CoreyHughesBot/1.0; +http://yourdomain.com)",
             "Accept-Encoding": "gzip, deflate",
