@@ -56,16 +56,24 @@ def fetch_social_sentiment(ticker):
 
 def fetch_insider_trading(ticker):
     try:
-        df = qq.get_insider_trading(ticker)
-        if df.empty:
+        headers = {"Authorization": f"Bearer {QUIVER_API_KEY}"}
+        url = f"https://api.quiverquant.com/beta/historical/congresstrading/{ticker.upper()}"
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            print(f"{ticker} insider API error: {response.status_code}")
             return 0
-        recent_trades = df.sort_values('Date', ascending=False).head(10)
+
+        data = response.json()
+        if not isinstance(data, list) or len(data) == 0:
+            return 0
+
+        recent = data[:10]
         score = 0
-        for _, row in recent_trades.iterrows():
-            action = row.get('Transaction', '').lower()
-            if 'buy' in action:
+        for trade in recent:
+            action = trade.get("Transaction", "").lower()
+            if "purchase" in action or "buy" in action:
                 score += 0.2
-            elif 'sell' in action:
+            elif "sale" in action or "sell" in action:
                 score -= 0.2
         print(f"{ticker} insider score: {score}")
         return score
