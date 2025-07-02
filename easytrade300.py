@@ -13,7 +13,6 @@ warnings.filterwarnings('ignore')
 QUIVER_API_KEY = 'e1c45cb296aab1338edbef3e11fb9b2acd66413b'
 
 # Initialize API clients
-finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
 analyzer = SentimentIntensityAnalyzer()
 
 stocks = {
@@ -141,7 +140,6 @@ def fetch_insider_trading(ticker):
         if congress_resp.status_code == 200:
             congress_data = congress_resp.json()
             recent_congress = [t for t in congress_data if t.get("Ticker", "") and t["Ticker"].upper() == ticker.upper()][:10]
-            print(f"Congress trades for {ticker}: {len(recent_congress)}")
             for trade in recent_congress:
                 action = trade.get("Transaction", "").lower()
                 amount = float(trade.get("Amount", 0) or 0)
@@ -156,7 +154,6 @@ def fetch_insider_trading(ticker):
         if corp_resp.status_code == 200:
             corp_data = corp_resp.json()
             recent_corp = [t for t in corp_data if t.get("Ticker", "") and t["Ticker"].upper() == ticker.upper()][:10]
-            print(f"Corporate trades for {ticker}: {len(recent_corp)}")
             for trade in recent_corp:
                 action = trade.get("Transaction", "").lower()
                 value = float(trade.get("Value", 0) or 0)
@@ -328,55 +325,12 @@ def generate_trade_recommendations():
         })
 
     return trades
-
+    
 def main():
     print("Generating Options Trade Recommendations...")
+    from trade_logic import generate_trade_recommendations, calculate_composite_score, fetch_options_data
 
-    raw_scores = []
-    for ticker in stock_list:
-        result = calculate_composite_score(ticker)
-        if result:
-            raw_scores.append(result)
-
-    normalized = normalize_scores(raw_scores)
-    top_trades = sector_limiter(normalized[:10], max_per_sector=1)
-
-    trades = []
-    for score in top_trades:
-        options_data = fetch_options_data(score['ticker'])
-        if not options_data:
-            continue
-
-        composite = score['normalized_score']
-        if composite >= 0.6:
-            option_type = 'Bull Call Spread'
-            buy = options_data['call_buy']
-            sell = options_data['call_sell']
-            spread_cost = buy['ask'] - sell['bid']
-            limit_price = round(spread_cost * 1.05, 2)
-            strike = f"{buy['strike']} / {sell['strike']}"
-        elif composite >= 0.4:
-            option_type = 'Bullish Call'
-            buy = options_data['call_buy']
-            limit_price = round(buy['ask'] * 1.05, 2)
-            strike = buy['strike']
-        elif composite >= 0.2:
-            option_type = 'Bullish Put (Sell CSP)'
-            sell = options_data['put']
-            limit_price = round(sell['bid'] * 0.95, 2)
-            strike = sell['strike']
-        else:
-            continue
-
-        trades.append({
-            'ticker': score['ticker'],
-            'option_type': option_type,
-            'expiration': options_data['expiration'],
-            'strike': strike,
-            'limit_price': limit_price,
-            'confidence': round(min(composite * 100, 95), 2),
-            'explanation': f"{score['ticker']} shows strong signals. RSI and MACD align, news sentiment is {'positive' if score['news_score'] > 0 else 'negative'}, social media is {'favorable' if score['social_score'] > 0 else 'unfavorable'}, and {'insider buying detected' if score['insider_score'] > 0 else 'no significant insider activity'}."
-        })
+    trades = generate_trade_recommendations()
 
     pd.DataFrame(trades).to_csv("trade_recommendations.csv", index=False)
     print("Saved recommendations to trade_recommendations.csv")
@@ -392,27 +346,29 @@ def main():
         print(f"Confidence Level: {trade['confidence']}%")
         print(f"Explanation: {trade['explanation']}")
 
-    # Show lowest scoring ticker
-    if normalized:
-        worst = min(normalized, key=lambda x: x['normalized_score'])
-        options_data = fetch_options_data(worst['ticker'])
-        if options_data:
-            option_type = 'Bearish Put (Buy Put)'
-            buy = options_data['put']
-            limit_price = round(buy['ask'] * 1.05, 2)
-            strike = buy['strike']
-            confidence = round(min(abs(worst['normalized_score']) * 100, 95), 2)
-            explanation = f"{worst['ticker']} scored poorly. Technicals are weak, sentiment is {'positive' if worst['news_score'] > 0 else 'negative'}, social mentions are {'high' if worst['social_score'] > 0 else 'low'}, and insider selling or inactivity noted."
+    # Show lowest scored ticker
+    all_scores = []
+    for t in stock_list:
+        try:
+            s = calculate_composite_score(t)
+            if s:
+                all_scores.append(s)
+        except:
+            continue
 
+    if all_scores:
+        lowest = sorted(all_scores, key=lambda x: x['score'])[0]
+        option_data = fetch_options_data(lowest['ticker'])
+        if option_data:
             print("\nLowest Scoring Ticker:")
             print(f"\nTrade (Lowest Score):")
-            print(f"Ticker: {worst['ticker']}")
-            print(f"Option Type: {option_type}")
-            print(f"Expiration Date: {options_data['expiration']}")
-            print(f"Strike: {strike}")
-            print(f"Limit Price: ${limit_price}")
-            print(f"Confidence Level: {confidence}%")
-            print(f"Explanation: {explanation}")
-            
+            print(f"Ticker: {lowest['ticker']}")
+            print(f"Option Type: Bearish Put (Buy Put)")
+            print(f"Expiration Date: {option_data['expiration']}")
+            print(f"Strike: {option_data['put']['strike']}")
+            print(f"Limit Price: ${round(option_data['put']['ask'] * 1.05, 2)}")
+            print(f"Confidence Level: {round(min(abs(lowest['score']) * 100, 95), 2)}%")
+            print(f"Explanation: {lowest['ticker']} is showing weak signals with a composite score of {round(lowest['score'], 2)}. Technicals suggest weakness. News and social sentiment are negative. Insider trading data shows recent sales or lack of purchases.")
+
 if __name__ == "__main__":
     main()
