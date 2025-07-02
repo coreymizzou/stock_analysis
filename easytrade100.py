@@ -10,7 +10,6 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # API Keys
-FINNHUB_API_KEY = 'YOUR_FINNHUB_API_KEY'
 QUIVER_API_KEY = '9ed914d4d32da4d26b02d4d9540f46606002736b'
 
 # Initialize API clients
@@ -19,8 +18,8 @@ analyzer = SentimentIntensityAnalyzer()
 
 stocks = {
     'Top_Tier': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA'],
-    'Mid_Tier': ['SOFI', 'NXT', 'MGNI', 'JOBY', 'SKYE'],
-    'Political': ['BA', 'LMT', 'RTX', 'NOC'],
+    'Mid_Tier': ['SOFI', 'NXT', 'MGNI', 'JOBY', 'SKYE', 'F'],
+    'Political': ['BA', 'LMT', 'RTX', 'NOC', 'NANC'],
     'EV': ['TSLA', 'LCID', 'RIVN', 'NIO'],
     'Energy': ['XOM', 'CVX', 'SLB', 'BP'],
     'Tech': ['AMD', 'PLTR', 'INTC', 'CRM', 'ORCL']
@@ -127,28 +126,39 @@ def fetch_social_sentiment(ticker):
 
 def fetch_insider_trading(ticker):
     try:
-        headers = {"Authorization": f"Bearer {QUIVER_API_KEY}"}
-        url = "https://api.quiverquant.com/beta/live/congresstrading"
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code != 200:
-            print(f"Quiver API error: {response.status_code}")
-            return 0
+        headers = {"Authorization": f"Bearer {QUIVER_API_KEY}", "Accept": "application/json"}
+        congress_url = "https://api.quiverquant.com/beta/live/congresstrading"
+        corp_url = "https://api.quiverquant.com/beta/live/insiders"
 
-        data = response.json()
-        recent_trades = [t for t in data if t.get("Ticker", "").upper() == ticker.upper()][:10]
+        congress_resp = requests.get(congress_url, headers=headers, timeout=10)
+        corp_resp = requests.get(corp_url, headers=headers, timeout=10)
 
         score = 0
-        for trade in recent_trades:
-            action = trade.get("Transaction", "").lower()
-            amount = float(trade.get("Amount", 0) or 0)
-            rep_name = trade.get("Representative", "").lower()
 
-            if "purchase" in action or "buy" in action:
-                score += 0.2 + min(amount / 100000, 0.3)
-            elif "sale" in action or "sell" in action:
-                score -= 0.2 + min(amount / 100000, 0.3)
-            if "pelosi" in rep_name:
-                score += 0.3
+        if congress_resp.status_code == 200:
+            congress_data = congress_resp.json()
+            recent_congress = [t for t in congress_data if t.get("Ticker", "").upper() == ticker.upper()][:10]
+            for trade in recent_congress:
+                action = trade.get("Transaction", "").lower()
+                amount = float(trade.get("Amount", 0) or 0)
+                rep_name = trade.get("Representative", "").lower()
+                if "purchase" in action:
+                    score += 0.2 + min(amount / 100000, 0.3)
+                elif "sale" in action:
+                    score -= 0.2 + min(amount / 100000, 0.3)
+                if "pelosi" in rep_name:
+                    score += 0.3
+
+        if corp_resp.status_code == 200:
+            corp_data = corp_resp.json()
+            recent_corp = [t for t in corp_data if t.get("Ticker", "").upper() == ticker.upper()][:10]
+            for trade in recent_corp:
+                action = trade.get("Transaction", "").lower()
+                value = float(trade.get("Value", 0) or 0)
+                if "purchase" in action:
+                    score += 0.2 + min(value / 100000, 0.3)
+                elif "sale" in action:
+                    score -= 0.2 + min(value / 100000, 0.3)
 
         return score
     except Exception as e:
