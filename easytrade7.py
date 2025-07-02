@@ -12,7 +12,7 @@ warnings.filterwarnings('ignore')
 
 # API Keys (replace with your own)
 FINNHUB_API_KEY = 'd1ijut1r01qhbuvqfv60d1ijut1r01qhbuvqfv6g'
-NEWSAPI_KEY = '1ee7087627ae4595bbd84147e391b175'
+NEWSAPI_KEY = '752ce0d986ec40d09652896b2315613a'
 
 # Initialize API clients
 finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
@@ -136,12 +136,14 @@ def scrape_x_sentiment(ticker):
 def fetch_insider_trading(ticker):
     """Fetch insider trading data from Finnhub."""
     try:
-        insiders = finnhub_client.stock_insider_transactions(ticker, from_date='2025-01-01', to_date='2025-07-01')
+        insiders = finnhub_client.stock_insider_transactions(ticker, _from='2025-01-01', to='2025-07-01')
         insider_score = 0
+        if 'data' not in insiders:
+            return 0
         for trade in insiders['data'][:10]:
-            if trade['transactionType'].lower() == 'buy':
+            if trade.get('transactionType', '').lower() == 'buy':
                 insider_score += 0.2
-            elif trade['transactionType'].lower() == 'sell':
+            elif trade.get('transactionType', '').lower() == 'sell':
                 insider_score -= 0.2
         return insider_score
     except Exception as e:
