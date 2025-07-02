@@ -141,6 +141,7 @@ def fetch_insider_trading(ticker):
         if congress_resp.status_code == 200:
             congress_data = congress_resp.json()
             recent_congress = [t for t in congress_data if t.get("Ticker", "") and t["Ticker"].upper() == ticker.upper()][:10]
+            print(f"Congress trades for {ticker}: {len(recent_congress)}")
             for trade in recent_congress:
                 action = trade.get("Transaction", "").lower()
                 amount = float(trade.get("Amount", 0) or 0)
@@ -155,6 +156,7 @@ def fetch_insider_trading(ticker):
         if corp_resp.status_code == 200:
             corp_data = corp_resp.json()
             recent_corp = [t for t in corp_data if t.get("Ticker", "") and t["Ticker"].upper() == ticker.upper()][:10]
+            print(f"Corporate trades for {ticker}: {len(recent_corp)}")
             for trade in recent_corp:
                 action = trade.get("Transaction", "").lower()
                 value = float(trade.get("Value", 0) or 0)
