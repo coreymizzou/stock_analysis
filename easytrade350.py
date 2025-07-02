@@ -328,8 +328,7 @@ def generate_trade_recommendations():
 
 def main():
     print("Generating Options Trade Recommendations...")
-    from trade_logic import generate_trade_recommendations, calculate_composite_score, fetch_options_data
-
+    
     trades = generate_trade_recommendations()
 
     pd.DataFrame(trades).to_csv("trade_recommendations.csv", index=False)
