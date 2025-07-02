@@ -313,7 +313,7 @@ def main():
         print(f"News Score: {round(lowest['news_score'], 2)}")
         print(f"Insider Score: {round(lowest['insider_score'], 2)}")
         print(f"Social Score: {round(lowest['social_score'], 2)}")
-        print(f"Technical Score: {round(lowest['tech_score'], 2)}")")
+        print(f"Technical Score: {round(lowest['tech_score'], 2)}")
 
 if __name__ == "__main__":
     main()
