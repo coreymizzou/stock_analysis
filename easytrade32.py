@@ -57,15 +57,12 @@ def fetch_insider_trading(ticker):
         headers = {"Authorization": f"Bearer {QUIVER_API_KEY}"}
         url = f"https://api.quiverquant.com/beta/historical/insidertrading/{ticker.upper()}"
         response = requests.get(url, headers=headers, timeout=10)
-
         if response.status_code != 200:
             print(f"{ticker} insider API error: {response.status_code}")
             return 0
-
         data = response.json()
         if not isinstance(data, list) or len(data) == 0:
             return 0
-
         recent = data[:10]
         score = 0
         for trade in recent:
@@ -79,7 +76,7 @@ def fetch_insider_trading(ticker):
     except Exception as e:
         print(f"Error fetching insider data for {ticker}: {e}")
         return 0
-
+        
 def fetch_stock_data(ticker):
     try:
         stock = yf.Ticker(ticker)
