@@ -145,51 +145,33 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
 
 def fetch_insider_trading(ticker):
     try:
-        cik_lookup_url = "https://www.sec.gov/files/company_tickers_exchange.json"
+        url = f"http://openinsider.com/screener?s={ticker}&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=0&tdr=&xp=1&vl=&vh=&ocl=&och=&sic1=&sic2=&sortcol=0"
         headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; CoreyHughesBot/1.0; +http://yourdomain.com)",
-            "Accept-Encoding": "gzip, deflate",
-            "Host": "www.sec.gov"
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
-        res = requests.get(cik_lookup_url, headers=headers)
+        res = requests.get(url, headers=headers)
         if res.status_code != 200:
-            print(f"CIK lookup failed for {ticker} with status code {res.status_code}")
+            print(f"Error fetching insider data for {ticker}: Status {res.status_code}")
             return 0
 
-        data = res.json()
-        cik = None
-        for item in data.values():
-            if item['ticker'].upper() == ticker.upper():
-                cik = str(item['cik_str']).zfill(10)
-                break
-        if not cik:
-            print(f"CIK not found for {ticker}")
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(res.text, 'html.parser')
+        table = soup.find('table', class_='tinytable')
+        if not table:
             return 0
 
-        form4_url = f"https://data.sec.gov/submissions/CIK{cik}.json"
-        r = requests.get(form4_url, headers=headers)
-        if r.status_code != 200:
-            print(f"Failed to fetch Form 4 data for {ticker}: {r.status_code}")
-            return 0
-
-        filings = r.json().get('filings', {}).get('recent', {})
+        rows = table.find_all('tr')[1:11]
         score = 0
-        count = 0
-        for form, code in zip(filings.get('form', []), filings.get('transactionCode', [])):
-            if form != '4':
+        for row in rows:
+            cells = row.find_all('td')
+            if len(cells) < 8:
                 continue
-            if code == 'P':
+            action = cells[6].text.strip().lower()
+            if action == 'buy':
                 score += 0.2
-                count += 1
-            elif code == 'S':
+            elif action == 'sell':
                 score -= 0.2
-                count += 1
-            if count >= 10:
-                break
         return score
-    except Exception as e:
-        print(f"Error fetching SEC insider data for {ticker}: {e}")
-        return 0
     except Exception as e:
         print(f"Error fetching insider data for {ticker}: {e}")
         return 0
