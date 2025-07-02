@@ -146,7 +146,11 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
 def fetch_insider_trading(ticker):
     try:
         cik_lookup_url = "https://www.sec.gov/files/company_tickers.json"
-        headers = {"User-Agent": "Mozilla/5.0 (compatible; CoreyBot/1.0)"}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; CoreyHughesBot/1.0; +http://yourdomain.com)",
+            "Accept-Encoding": "gzip, deflate",
+            "Host": "www.sec.gov"
+        }
         res = requests.get(cik_lookup_url, headers=headers)
         data = res.json()
         cik = None
@@ -159,7 +163,11 @@ def fetch_insider_trading(ticker):
             return 0
 
         form4_url = f"https://data.sec.gov/submissions/CIK{cik}.json"
-        headers = {"User-Agent": "Mozilla/5.0"}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; CoreyHughesBot/1.0; +http://yourdomain.com)",
+            "Accept-Encoding": "gzip, deflate",
+            "Host": "www.sec.gov"
+        }
         r = requests.get(form4_url, headers=headers)
         r.raise_for_status()
         filings = r.json().get('filings', {}).get('recent', {})
