@@ -11,8 +11,8 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # API Keys (replace with your own)
-FINNHUB_API_KEY = 'YOUR_FINNHUB_API_KEY'
-NEWSAPI_KEY = 'YOUR_NEWSAPI_KEY'
+FINNHUB_API_KEY = 'd1ijut1r01qhbuvqfv60d1ijut1r01qhbuvqfv6g'
+NEWSAPI_KEY = 'dd76647ac02b4d73a2b46b9fba96efd5'
 
 # Initialize API clients
 finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
@@ -93,10 +93,12 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
     return macd, signal_line
 
 def fetch_news_sentiment(ticker):
-    """Fetch news sentiment using NewsAPI."""
     try:
         query = f"{ticker} stock"
         articles = newsapi.get_everything(q=query, language='en', sort_by='relevancy', page_size=20)
+        if 'status' in articles and articles['status'] == 'error':
+            print(f"Rate limit or error fetching news for {ticker}")
+            return 0
         sentiment_score = 0
         count = 0
         for article in articles['articles']:
@@ -132,7 +134,7 @@ def scrape_x_sentiment(ticker):
 def fetch_insider_trading(ticker):
     """Fetch insider trading data from Finnhub."""
     try:
-        insiders = finnhub_client.insider_transactions(ticker, from_date='2025-01-01', to_date='2025-07-01')
+        insiders = finnhub_client.stock_insider_transactions(ticker, from_date='2025-01-01', to_date='2025-07-01')
         insider_score = 0
         for trade in insiders['data'][:10]:
             if trade['transactionType'].lower() == 'buy':
