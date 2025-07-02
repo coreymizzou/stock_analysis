@@ -10,7 +10,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # API Keys
-QUIVER_API_KEY = '9ed914d4d32da4d26b02d4d9540f46606002736b'
+QUIVER_API_KEY = 'e1c45cb296aab1338edbef3e11fb9b2acd66413b'
 
 # Initialize API clients
 finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
